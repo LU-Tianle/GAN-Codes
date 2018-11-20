@@ -8,36 +8,26 @@
 """
 
 import os
-import matplotlib.pyplot as plt
-import shutil
 
 
-def create_folder(path, clean_folder=False):
+def save_parameters(first_conv_trans_layer_filters, conv_trans_layers, first_layer_filters, conv_layers,
+                    dataset, batch_size, noise_dim, training_algorithm, save_path):
     """
-    create a folder if it's not exist
-    :param path: folder path,
-    :param clean_path: if true, all folders and files in the path will be deleted recursively
+    save networks and training parameters
     """
-    if os.path.exists(path):
-        if not clean_folder:
-            shutil.rmtree(path)  # Recursively delete a directory tree
-            os.makedirs(path)
-    else:
-        os.makedirs(path)
-
-
-
-
-    # def __latest_check_point_epoch(self):
-    #     """
-    #     :return: the number of latest check point epochs that had been saved in the '.../checkpoints/'
-    #     """
-    #     for folder in os.listdir(self.check_points_path):  # delete illegal files and folders
-    #         path = self.check_points_path + os.path.sep + folder
-    #         if os.path.isfile(path):
-    #             os.remove(path)
-    #         if re.match(r'epoch_', folder) is None:
-    #             shutil.rmtree(path)
-    #     dir_list = os.listdir(self.check_points_path)
-    #     dir_list.sort()
-    #     return dir_list.pop().split('_')[1]
+    file = open(save_path + os.path.sep + "parameter.txt", mode='w')
+    file.write('FIRST_CONV_TRANS_LAYER_FILTERS ' + str(first_conv_trans_layer_filters) + '\n')
+    file.write('CONV_TRANS_LAYERS ' + str(conv_trans_layers) + '\n')
+    file.write('\n')
+    file.write('FIRST_LAYER_FILTERS ' + str(first_layer_filters) + '\n')
+    file.write('CONV_LAYERS ' + str(conv_layers) + '\n')
+    file.write('\n')
+    file.write('DATASET ' + dataset + '\n')
+    file.write('BATCH_SIZE ' + str(batch_size) + '\n')
+    file.write('NOISE_DIM ' + str(noise_dim) + '\n')
+    file.write('TRAINING_ALGORITHM ' + training_algorithm + '\n')
+    file.write('\n')
+    file.write('CHECK_POINTS_PATH ' + save_path + os.path.sep + 'check_points' + '\n')
+    file.write('GENERATED_IMAGE_DURING_PATH ' + save_path + os.path.sep + 'images_during_training' + '\n')
+    file.write('\n')
+    file.close()

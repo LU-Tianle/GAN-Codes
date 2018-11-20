@@ -48,8 +48,8 @@ class GeneratorDcgan:
         self.project_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='generator/project/batch_norm')
         self.conv_trans_batch_norm_layers = []  # conv2d transpose layers with batch normalization
         for layer in range(conv_trans_layers - 1):
-            # the filters in each layer should not less than 16
-            filters = first_conv_trans_layer_filters // (2 ** layer) if first_conv_trans_layer_filters / (2 ** layer) >= 16 else 16
+            # the filters in each layer should not less than 8
+            filters = first_conv_trans_layer_filters // (2 ** layer) if first_conv_trans_layer_filters / (2 ** layer) >= 8 else 8
             conv_trans = tf.layers.Conv2DTranspose(filters=filters, kernel_size=(5, 5), strides=(2, 2), padding='same', use_bias=False,
                                                    kernel_initializer=tf.random_normal_initializer(stddev=0.02), data_format="channels_first",
                                                    name='generator/conv_trans_%d/conv_trans' % (layer + 1))

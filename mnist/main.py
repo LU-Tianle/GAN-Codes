@@ -14,30 +14,35 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import random
 import networks
-import gan
 import utils
+from gan import Gan
 
 # ==============================================================================
+DATASET = 'MNIST'  # 'MNIST' or 'Fashion MNIST'
 # networks hyper parameters: details in networks.py
-GEN_CONV_TRANS_FIRST_LAYER_FILTERS = 64
-GEN_CONV_TRANS_LAYERS = 2
-DISC_FIRST_LAYER_FILTERS = 64
+GEN_CONV_FIRST_LAYER_FILTERS = 128
+GEN_CONV_LAYERS = 2
+DISC_FIRST_LAYER_FILTERS = 128
 DISC_CONV_LAYERS = 2
 
 # training hyper parameters:
 BATCH_SIZE = 256
 EPOCHS = 150
 NOISE_DIM = 100
-GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(1e-4)
-DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(1e-4)
+GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=1e-4)
+DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=1e-4)
 TRAINING_ALGORITHM = "vanilla"
 
-# other parameters:
-CHECK_POINTS_PATH = os.getcwd() + os.path.sep + 'checkpoints'  # the absolute path to save check points, it'll be created if not existed
-CONTINUE_TRAINING = False  # continue training using the latest check points in the path above, if False all the files will be deleted in the folder
-OUTPUT_IMAGE_PATH = os.getcwd() + os.path.sep + 'output'  # the absolute path to save output images, it'll be created if not existed
-INTERVAL_EPOCHS = 1  # save check points every interval epochs
+# other parameters: details in gan.py
+SAVE_PATH = os.getcwd() + os.path.sep + 'saved_data_1'
+CONTINUE_TRAINING = False
+INTERVAL_EPOCHS = 5
 IMAGES_PER_ROW = 6
+
+# generate images by saved check points:
+OUTPUT_IMAGE_PATH = os.getcwd() + os.path.sep + 'generated_images'
+IMAGE_PAGES = 5
+IMAGES_PER_ROW_FOR_GENERATING = 6
 
 
 # ==============================================================================
@@ -92,19 +97,22 @@ def __get_mnist_data():
 
 
 if __name__ == '__main__':
-    utils.create_folder(CHECK_POINTS_PATH, CONTINUE_TRAINING)
-    utils.create_folder(OUTPUT_IMAGE_PATH, CONTINUE_TRAINING)
-    mnist_dataset = get_mnist_dataset(use_testset=True)
+    if DATASET == 'MNIST':
+        mnist_dataset = get_mnist_dataset(use_testset=True)
+    else:
+        mnist_dataset = get_mnist_dataset(use_testset=True)
+    # construct the networks and training algorithm
     image_shape = mnist_dataset.output_shapes.as_list()
-    # dataset.output_shapes is a object of tf.TensorShape,
-    # .as_list() Returns a list of integers or None for each dimension.
-    generator = networks.GeneratorDcgan(image_shape=image_shape, first_conv_trans_layer_filters=GEN_CONV_TRANS_FIRST_LAYER_FILTERS,
-                                        conv_trans_layers=GEN_CONV_TRANS_LAYERS)
+    generator = networks.GeneratorDcgan(image_shape=image_shape, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS)
     discriminator = networks.DiscriminatorDcgan(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS)
-    gan.Gan(generator=generator, discriminator=discriminator, check_points_path=CHECK_POINTS_PATH, output_image_path=OUTPUT_IMAGE_PATH) \
-        .train(dataset=mnist_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, noise_dim=NOISE_DIM,
-               discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,
-               save_intervals=INTERVAL_EPOCHS, images_per_row=IMAGES_PER_ROW, continue_training=CONTINUE_TRAINING)
-    # gan.generate_image(output_image_path=OUTPUT_IMAGE_PATH,
-    #                    image_pages=FINAL_IMAGE_PAGES,
-    #                    generate_midterm_images=GENERATE_MIDTERM_IMAGES)
+    gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH)
+    # save parameters in save_path/parameter.txt"
+    utils.save_parameters(first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS,
+                          first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
+                          dataset=DATASET, batch_size=BATCH_SIZE, noise_dim=NOISE_DIM, training_algorithm=TRAINING_ALGORITHM, save_path=SAVE_PATH)
+    # training
+    # gan.train(dataset=mnist_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, noise_dim=NOISE_DIM,
+    #           discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,
+    #           save_intervals=INTERVAL_EPOCHS, images_per_row=IMAGES_PER_ROW, continue_training=CONTINUE_TRAINING)
+    # generate images using the latest saved check points and the images will be saved in 'save_path/images/'
+    Gan.generate_image(save_path=SAVE_PATH, noise_dim=NOISE_DIM, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)
