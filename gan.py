@@ -29,6 +29,7 @@ class Gan:
         self.save_path = save_path
         self.check_points_path = save_path + os.path.sep + 'check_points'
         self.output_image_path = save_path + os.path.sep + 'images_during_training'
+        self.generator.generate()
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
 
@@ -54,21 +55,23 @@ class Gan:
         Gan.__create_folder(self.check_points_path, continue_training)
         Gan.__create_folder(self.output_image_path, continue_training)
         # images will be generated after save_intervals epochs using the same noise
-        random_vector_for_generation = tf.constant(np.random.randn(images_per_row ** 2, noise_dim), dtype=tf.float32)
-        dataset = dataset.batch(batch_size)
-        iterator = tf.data.Iterator.from_structure(dataset.output_types, dataset.output_shapes)
-        iterator_initialize = iterator.make_initializer(dataset)
-        generated_images = self.generator(tf.random_normal([batch_size, noise_dim]), training=True)
-        discriminator_input = tf.concat([iterator.get_next(), generated_images], axis=0)  # feed images from training set and generator to discriminator
+        random_vector_for_generation = tf.constant(np.random.randn(images_per_row ** 2, noise_dim), dtype=tf.float32, name='random_vector_for_generation')
+        dataset = dataset.batch(batch_size, drop_remainder=True)
+        iterator = tf.data.Iterator.from_structure(dataset.output_types, dataset.output_shapes, shared_name='training dataset iterator')
+        iterator_initialize = iterator.make_initializer(dataset, name='training_dataset_iterator_initialize')
+        generated_images = self.generator(tf.random_normal([batch_size, noise_dim], name='random_noise_for_training'), training=True)
+        # feed images from training set and generator to discriminator
+        discriminator_input = tf.concat([iterator.get_next(), generated_images], axis=0, name='discriminator_input')
         discriminator_output = self.discriminator(discriminator_input, training=True)
-        real_output = discriminator_output[:batch_size]
-        generated_output = discriminator_output[batch_size:]
+        real_output = tf.slice(discriminator_output, begin=[0, 0], size=[batch_size, -1], name='real_output')
+        generated_output = tf.slice(discriminator_output, begin=[batch_size, 0], size=[batch_size, -1], name='generated_output')
         discriminator_loss, generator_loss = Gan.__loss(real_output, generated_output, algorithm=algorithm)
         train_discriminator = discriminator_optimizer.minimize(discriminator_loss, var_list=self.discriminator.var_list)
         train_generator = generator_optimizer.minimize(generator_loss, var_list=self.generator.var_list)
         generate_images_each_epoch = self.generator(random_vector_for_generation, training=False)
         saver = tf.train.Saver(max_to_keep=3)
         with tf.Session() as sess:
+            writer = tf.summary.FileWriter(self.save_path, sess.graph)  # save tensorboard files
             if continue_training:  # continue training from the latest check point
                 latest_check_point_path = tf.train.latest_checkpoint(self.check_points_path)
                 assert latest_check_point_path is not None, "no check points found"
@@ -92,16 +95,17 @@ class Gan:
                     Gan.__generate_and_save_images(self.output_image_path, predictions, images_per_row, epoch + latest_check_point + 1)
                     saver.save(sess=sess, save_path=os.path.join(self.check_points_path, 'check_points'), global_step=epoch + latest_check_point + 1)
             print('Time taken for training is {} min'.format((time.time() - training_start_time) / 60))
+            writer.close()
 
     @staticmethod
     def generate_image(save_path, noise_dim, image_pages, images_per_row):
         """
         generate images using the latest saved check points and the images will be saved in 'save_path/images/'
         :param save_path: check points that have been saved in 'save_path/check_points/'
-        :param noise_dim: noise dim for generation
         :param image_pages: generated figure pages
         :param images_per_row: the number of generated images per row/column in a figure
         """
+        assert images_per_row <= 10, 'too much images in a figure'
         check_points_path = os.path.join(save_path, 'check_points')
         output_image_path = os.path.join(save_path, 'images')
         Gan.__create_folder(output_image_path, False)
@@ -113,7 +117,7 @@ class Gan:
         with tf.Session() as sess:
             saver.restore(sess, latest_check_point_path)
             for i in range(image_pages):
-                generated_images = sess.run('generator/output:0')
+                generated_images = sess.run('generated_images:0')  # only generate 100 images each call
                 Gan.__generate_and_save_images(output_image_path, generated_images, images_per_row, latest_check_point, i)
 
     @staticmethod
@@ -121,7 +125,7 @@ class Gan:
         if algorithm == 'vanilla':
             real_loss = tf.losses.sigmoid_cross_entropy(multi_class_labels=tf.ones_like(real_output), logits=real_output)
             generated_loss = tf.losses.sigmoid_cross_entropy(multi_class_labels=tf.zeros_like(generated_output), logits=generated_output)
-            discriminator_loss = real_loss + generated_loss
+            discriminator_loss = tf.add(real_loss, generated_loss, name='discriminator_loss')
             generator_loss = tf.losses.sigmoid_cross_entropy(multi_class_labels=tf.ones_like(generated_output), logits=generated_output)
             return discriminator_loss, generator_loss
         else:  # TODO needs to be implemented
@@ -131,10 +135,12 @@ class Gan:
     def __generate_and_save_images(output_path, predictions, images_per_row, epoch, index=0):
         fig = plt.figure(figsize=(images_per_row, images_per_row))
         fig.suptitle('epoch_{:04d}.png'.format(epoch))
-        cmap = 'gray' if predictions.shape[1] == 1 else None
         for i in range(images_per_row ** 2):
             plt.subplot(images_per_row, images_per_row, i + 1)
-            plt.imshow(predictions[i][0] * 127.5 + 127.5, cmap=cmap)
+            if predictions.shape[1] == 1:
+                plt.imshow(predictions[i][0] * 127.5 + 127.5, cmap='gray')
+            else:
+                plt.imshow(predictions[i] * 127.5 + 127.5)
             plt.axis('off')
         plt.savefig(output_path + os.path.sep + 'epoch_{:04d}_{}.png'.format(epoch, index))
         plt.close(fig)
