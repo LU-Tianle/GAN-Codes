@@ -64,23 +64,19 @@ def get_mnist_dataset(use_testset=False):
     return train_dataset
 
 
-def show_mnist_pictures():
+def show_mnist_pictures(images_per_row):
     """
     randomly show 6 and 3 pictures with their labels in the training set and test set respectively.
     """
     (train_images, train_labels), (test_images, test_labels) = __get_mnist_data()
-    figure, axes = plt.subplots(3, 3)
-    for i in range(2):
-        for j in range(3):
-            picture = random.randint(0, train_images.shape[0])
-            axes[i][j].imshow(train_images[picture][0], cmap='gray')
-            axes[i][j].set_title("training set, label: " + str(train_labels[picture]))
-            axes[i][j].axis('off')
-    for i in range(3):
-        picture = random.randint(0, test_images.shape[0])
-        axes[2][i].imshow(test_images[picture][0], cmap='gray')
-        axes[2][i].set_title("test set, label: " + str(test_labels[picture]))
-        axes[2][i].axis('off')
+    train_images = np.vstack((train_images, test_images))
+    fig = plt.figure(figsize=(images_per_row, images_per_row))
+    fig.suptitle('images in MNIST dataset')
+    for i in range(images_per_row ** 2):
+        plt.subplot(images_per_row, images_per_row, i + 1)
+        picture = random.randint(0, train_images.shape[0])
+        plt.imshow(train_images[picture][0], cmap='gray')
+        plt.axis('off')
     plt.show()
 
 
@@ -97,20 +93,18 @@ def __get_mnist_data():
 
 
 if __name__ == '__main__':
-    if DATASET == 'MNIST':
-        mnist_dataset = get_mnist_dataset(use_testset=True)
-    else:
-        mnist_dataset = get_mnist_dataset(use_testset=True)
+    mnist_dataset = get_mnist_dataset(use_testset=True)
+    show_mnist_pictures(6)
     # construct the networks and training algorithm
-    image_shape = mnist_dataset.output_shapes.as_list()
-    generator = networks.GeneratorDcgan(image_shape=image_shape, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS,
-                                        noise_dim=NOISE_DIM)
-    discriminator = networks.DiscriminatorDcgan(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS)
+    # image_shape = mnist_dataset.output_shapes.as_list()
+    # generator = networks.GeneratorDcgan(image_shape=image_shape, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS,
+    #                                     noise_dim=NOISE_DIM)
+    # discriminator = networks.DiscriminatorDcgan(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS)
     # gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH)
     # save parameters in save_path/parameter.txt"
-    utils.save_parameters(first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS,
-                          first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
-                          dataset=DATASET, batch_size=BATCH_SIZE, noise_dim=NOISE_DIM, training_algorithm=TRAINING_ALGORITHM, save_path=SAVE_PATH)
+    # utils.save_parameters(first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS,
+    #                       first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
+    #                       dataset=DATASET, batch_size=BATCH_SIZE, noise_dim=NOISE_DIM, training_algorithm=TRAINING_ALGORITHM, save_path=SAVE_PATH)
     # training
     # gan.train(dataset=mnist_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, noise_dim=NOISE_DIM,
     #           discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,
@@ -118,4 +112,4 @@ if __name__ == '__main__':
     # tensorboard --logdir=E:\workspace\GAN\mnist\saved_data_1
     # localhost:6006
     # generate images using the latest saved check points and the images will be saved in 'save_path/images/'
-    Gan.generate_image(save_path=SAVE_PATH, noise_dim=NOISE_DIM, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)
+    # Gan.generate_image(save_path=SAVE_PATH, noise_dim=NOISE_DIM, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)

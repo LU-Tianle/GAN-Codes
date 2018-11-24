@@ -55,11 +55,12 @@ class Gan:
         Gan.__create_folder(self.check_points_path, continue_training)
         Gan.__create_folder(self.output_image_path, continue_training)
         # images will be generated after save_intervals epochs using the same noise
-        random_vector_for_generation = tf.constant(np.random.randn(images_per_row ** 2, noise_dim), dtype=tf.float32, name='random_vector_for_generation')
+        noise_for_generation = tf.constant(np.random.randn(images_per_row ** 2, noise_dim), dtype=tf.float32, name='noise_for_generation_during_training')
         dataset = dataset.batch(batch_size, drop_remainder=True)
         iterator = tf.data.Iterator.from_structure(dataset.output_types, dataset.output_shapes, shared_name='training dataset iterator')
         iterator_initialize = iterator.make_initializer(dataset, name='training_dataset_iterator_initialize')
-        generated_images = self.generator(tf.random_normal([batch_size, noise_dim], name='random_noise_for_training'), training=True)
+        noise_for_training = tf.random_normal([batch_size, noise_dim], name='noise_for_training')
+        generated_images = self.generator(noise_for_training, training=True, name='generator/output_layer/output')
         # feed images from training set and generator to discriminator
         discriminator_input = tf.concat([iterator.get_next(), generated_images], axis=0, name='discriminator_input')
         discriminator_output = self.discriminator(discriminator_input, training=True)
@@ -68,7 +69,7 @@ class Gan:
         discriminator_loss, generator_loss = Gan.__loss(real_output, generated_output, algorithm=algorithm)
         train_discriminator = discriminator_optimizer.minimize(discriminator_loss, var_list=self.discriminator.var_list)
         train_generator = generator_optimizer.minimize(generator_loss, var_list=self.generator.var_list)
-        generate_images_each_epoch = self.generator(random_vector_for_generation, training=False)
+        generate_images_each_epoch = self.generator(noise_for_generation, training=False, name='generated_images_during_training')
         saver = tf.train.Saver(max_to_keep=3)
         with tf.Session() as sess:
             writer = tf.summary.FileWriter(self.save_path, sess.graph)  # save tensorboard files

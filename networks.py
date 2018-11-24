@@ -59,9 +59,10 @@ class GeneratorDcgan:
             self.conv_trans_batch_norm_layers.append((conv_trans, batch_norm, name))
         # output layer whose output shape is [batch_size, channel, height, width], no batch normalization
         self.output_layer = tf.layers.Conv2DTranspose(filters=self.channel, kernel_size=(5, 5), strides=(2, 2), padding='same', data_format="channels_first",
-                                                      kernel_initializer=tf.random_normal_initializer(stddev=0.02), name='generator/output_layer/conv_trans')
+                                                      kernel_initializer=tf.random_normal_initializer(stddev=0.02),
+                                                      name='generator/conv_trans_%d/conv_trans' % conv_trans_layers)
 
-    def __call__(self, batch_z, training):
+    def __call__(self, batch_z, training, name):
         """
         generate images by random noise(batch_z)
         """
@@ -69,12 +70,12 @@ class GeneratorDcgan:
         batch_z = self.project_batch_norm(batch_z, training=training)
         batch_z = tf.nn.swish(batch_z, name='generator/project/swish')
         batch_z = tf.reshape(batch_z, shape=self.project_shape, name='generator/reshape')
-        for (conv_trans, batch_norm, name) in self.conv_trans_batch_norm_layers:
+        for (conv_trans, batch_norm, layer_name) in self.conv_trans_batch_norm_layers:
             batch_z = conv_trans(batch_z)
             batch_z = batch_norm(batch_z, training=training)
-            batch_z = tf.nn.swish(batch_z, name=name)
+            batch_z = tf.nn.swish(batch_z, name=layer_name)
         batch_z = self.output_layer(batch_z)
-        batch_z = tf.nn.tanh(batch_z, name='generator/output_layer/output')
+        batch_z = tf.nn.tanh(batch_z, name=name)
         return batch_z
 
     def generate(self):
@@ -82,17 +83,8 @@ class GeneratorDcgan:
         used for generating images, generate 100 images
         :return: the Tensor if generated images is 'generated_images:0'
         """
-        batch_z = tf.random_normal([100, self.noise_dim])
-        batch_z = self.project(batch_z)
-        batch_z = self.project_batch_norm(batch_z, training=False)
-        batch_z = tf.nn.swish(batch_z)
-        batch_z = tf.reshape(batch_z, shape=self.project_shape)
-        for (conv_trans, batch_norm, name) in self.conv_trans_batch_norm_layers:
-            batch_z = conv_trans(batch_z)
-            batch_z = batch_norm(batch_z, training=False)
-            batch_z = tf.nn.swish(batch_z)
-        batch_z = self.output_layer(batch_z)
-        batch_z = tf.nn.tanh(batch_z, name='generated_images')
+        batch_z = tf.random_normal([100, self.noise_dim], name='noise_for_generation')
+        self.__call__(batch_z, training=False, name='generated_images')
 
     @property
     def var_list(self):
@@ -127,7 +119,7 @@ class DiscriminatorDcgan:
         self.output_layer_flatten = tf.layers.Flatten(name='discriminator/output/flatten')
         self.output_layer_fc = tf.layers.Dense(units=1, use_bias=False, kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
                                                name="discriminator/output/fc")
-        # self.output_layer_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='discriminator/output')
+        self.output_layer_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='discriminator/output/batch_normalization')
 
     def __call__(self, batch, training):
         """
@@ -140,7 +132,7 @@ class DiscriminatorDcgan:
             batch = tf.nn.swish(batch, name=name)
         batch = self.output_layer_flatten(batch)
         batch = self.output_layer_fc(batch)
-        # batch = self.output_layer_batch_norm(batch, training=training)
+        batch = self.output_layer_batch_norm(batch, training=training)
         return batch
 
     @property
