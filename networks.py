@@ -121,14 +121,19 @@ class DiscriminatorDcgan:
                                                name="discriminator/output/fc")
         self.output_layer_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='discriminator/output/batch_normalization')
 
-    def __call__(self, batch, training):
+    def __call__(self, batch, training, batch_norm=True):
         """
-        discriminate the input images, output the batch of non-normalized probabilities
+         discriminate the input images, output the batch of non-normalized probabilities
+        :param batch:
+        :param batch_norm: use batch normalization or not
+        :param training:
+        :return:
         """
         batch = self.input_layer(batch)
         for (conv, batch_norm, name) in self.conv_batch_norm_layers:
             batch = conv(batch)
-            batch = batch_norm(batch, training=training)
+            if batch_norm:
+                batch = batch_norm(batch, training=training)
             batch = tf.nn.swish(batch, name=name)
         batch = self.output_layer_flatten(batch)
         batch = self.output_layer_fc(batch)
@@ -138,3 +143,66 @@ class DiscriminatorDcgan:
     @property
     def var_list(self):
         return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
+
+
+class GeneratorInception:
+    def __init__(self, first_layer_filters):
+        pass
+
+    def __call__(self, batch, training, batch_norm=True):
+        pass
+
+
+class DiscriminatorInceptionWithSpectralNorm:
+    def __init__(self, first_layer_filters):
+        pass
+
+    def __call__(self, batch, training, batch_norm=True):
+        pass
+
+
+def __spectral_norm(w, iteration=1):
+    """
+
+    :param w:
+    :param iteration:
+    :return:
+    """
+    w_shape = w.shape.as_list()  # [h,w,in,out]
+    w = tf.reshape(w, [-1, w_shape[-1]])  # [out,(h*w*in)]
+    u = tf.get_variable("u", [1, w_shape[-1]], initializer=tf.random_normal_initializer(), trainable=False)
+    u_hat = u
+    v_hat = None
+    for i in range(iteration):  # power iteration, Usually iteration = 1 will be enough
+        v_hat = tf.nn.l2_normalize(tf.matmul(u_hat, tf.transpose(w)))
+        u_hat = tf.nn.l2_normalize(tf.matmul(v_hat, w))
+    u_hat = tf.stop_gradient(u_hat)
+    v_hat = tf.stop_gradient(v_hat)
+    sigma = tf.matmul(tf.matmul(v_hat, w), tf.transpose(u_hat))
+    with tf.control_dependencies([u.assign(u_hat)]):
+        w_norm = w / sigma
+        w_norm = tf.reshape(w_norm, w_shape)
+    return w_norm
+
+
+# def conv2d(x, filters, kernel_size, name, strides=(1, 1), padding='valid', spectral_norm=False):
+#     """
+#
+#     :param x:
+#     :param channel:
+#     :param k_h:
+#     :param k_w:
+#     :param d_h:
+#     :param d_w:
+#     :param stddev:
+#     :param name:
+#     :return:
+#     """
+#     with tf.variable_scope(name):
+#         w = tf.get_variable('w', [k_h, k_w, x.get_shape()[-1], filters], initializer=tf.truncated_normal_initializer(stddev=stddev))
+#         if spectral_norm:
+#             w_sn = __spectral_norm(w, iteration=3)
+#         conv = tf.nn.conv2d(x, filter=w_sn, strides=[1, d_h, d_w, 1], padding='VALID')
+#         biases = tf.get_variable('biases', [channel], initializer=tf.constant_initializer(0.0))
+#         conv = tf.reshape(tf.nn.bias_add(conv, biases), conv.get_shape())
+#         return conv

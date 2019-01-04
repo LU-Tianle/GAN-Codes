@@ -14,7 +14,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import random
 import networks
-import utils
+import components
 from gan import Gan
 
 # ==============================================================================
@@ -101,6 +101,7 @@ if __name__ == '__main__':
     #                                     noise_dim=NOISE_DIM)
     # discriminator = networks.DiscriminatorDcgan(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS)
     # gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH)
+    # utils.create_folder(SAVE_PATH, CONTINUE_TRAINING)
     # save parameters in save_path/parameter.txt"
     # utils.save_parameters(first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS,
     #                       first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
