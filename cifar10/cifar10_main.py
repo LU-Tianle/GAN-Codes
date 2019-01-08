@@ -14,23 +14,24 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import random
-import networks
+import dcgan_nets
 import components
 from gan import Gan
 import cv2
 
 # ==============================================================================
 DATASET = 'CIFAR-10'
-# networks hyper parameters: details in networks.py
+# networks hyper parameters: details in dcgan_nets.py
 GEN_CONV_FIRST_LAYER_FILTERS = 512
 GEN_CONV_LAYERS = 3
-DISC_FIRST_LAYER_FILTERS = 64
-DISC_CONV_LAYERS = 4
+DISC_FIRST_LAYER_FILTERS = 256
+DISC_CONV_LAYERS = 3
 
 # training hyper parameters:
-BATCH_SIZE = 256
+BATCH_SIZE = 128
 EPOCHS = 150
 NOISE_DIM = 100
+DISCRIMINATOR_TRAINING_LOOP = 1
 GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='GENERATOR_OPTIMIZER_ADAM')
 DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='DISCRIMINATOR_OPTIMIZER_ADAM')
 TRAINING_ALGORITHM = "vanilla"
@@ -78,29 +79,30 @@ def show_cifar10_pictures(images_per_row):
     for i in range(images_per_row ** 2):
         plt.subplot(images_per_row, images_per_row, i + 1)
         picture = random.randint(0, train_images.shape[0])
-        plt.imshow(train_images[picture],cmap='gray')
+        plt.imshow(train_images[picture], cmap='gray')
         plt.axis('off')
     plt.show()
 
 
 if __name__ == '__main__':
-    show_cifar10_pictures(5)
-    # cifar10_dataset = get_cifar10_dataset(use_testset=True)
+    # show_cifar10_pictures(5)
+    cifar10_dataset = get_cifar10_dataset(use_testset=True)
     # # construct the networks and training algorithm
-    # image_shape = cifar10_dataset.output_shapes.as_list()
-    # generator = networks.GeneratorDcgan(image_shape=image_shape, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS,
-    #                                     conv_trans_layers=GEN_CONV_LAYERS, noise_dim=NOISE_DIM)
-    # discriminator = networks.DiscriminatorDcgan(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS)
-    # gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH)
-    # # training
-    # utils.create_folder(SAVE_PATH, CONTINUE_TRAINING)
-    # utils.save_parameters(first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS,
-    #                       first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
-    #                       dataset=DATASET, batch_size=BATCH_SIZE, noise_dim=NOISE_DIM, training_algorithm=TRAINING_ALGORITHM, save_path=SAVE_PATH)
-    # gan.train(dataset=cifar10_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, noise_dim=NOISE_DIM,
-    #           discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,
-    #           save_intervals=INTERVAL_EPOCHS, images_per_row=IMAGES_PER_ROW, continue_training=CONTINUE_TRAINING)
-    # # save parameters in save_path/parameter.txt"
+    image_shape = cifar10_dataset.output_shapes.as_list()
+    generator = dcgan_nets.Generator(image_shape=image_shape, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS,
+                                     conv_trans_layers=GEN_CONV_LAYERS, noise_dim=NOISE_DIM)
+    discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS)
+    gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH)
+    # training
+    components.create_folder(SAVE_PATH, CONTINUE_TRAINING)
+    components.save_parameters(first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS,
+                               first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
+                               discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
+                               dataset=DATASET, batch_size=BATCH_SIZE, noise_dim=NOISE_DIM, training_algorithm=TRAINING_ALGORITHM, save_path=SAVE_PATH)
+    gan.train(dataset=cifar10_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, noise_dim=NOISE_DIM, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
+              discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,
+              save_intervals=INTERVAL_EPOCHS, images_per_row=IMAGES_PER_ROW, continue_training=CONTINUE_TRAINING)
+    # save parameters in save_path/parameter.txt"
     # # tensorboard --logdir=E:\workspace\GAN\mnist\saved_data_1
     # # localhost: 6006
     # # generate images using the latest saved check points and the images will be saved in 'save_path/images/'
