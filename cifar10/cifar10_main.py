@@ -31,13 +31,21 @@ DISC_CONV_LAYERS = 3
 BATCH_SIZE = 128
 EPOCHS = 150
 NOISE_DIM = 100
-DISCRIMINATOR_TRAINING_LOOP = 1
-GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='GENERATOR_OPTIMIZER_ADAM')
-DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='DISCRIMINATOR_OPTIMIZER_ADAM')
-TRAINING_ALGORITHM = "vanilla"
+
+# vanilla gan training hyper-parameters
+# DISCRIMINATOR_TRAINING_LOOP = 1
+# GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='GENERATOR_OPTIMIZER_ADAM')
+# DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='DISCRIMINATOR_OPTIMIZER_ADAM')
+# TRAINING_ALGORITHM = "vanilla"
+
+# wgan training hyper-parameters
+DISCRIMINATOR_TRAINING_LOOP = 5
+GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='generator_optimizer_RMSProp')
+DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='discriminator_optimizer_RMSProp')
+TRAINING_ALGORITHM = "wgan"
 
 # other parameters: details in gan.py
-SAVE_PATH = os.getcwd() + os.path.sep + 'saved_data_1'
+SAVE_PATH = os.getcwd() + os.path.sep + 'wgan'
 CONTINUE_TRAINING = False
 INTERVAL_EPOCHS = 5
 IMAGES_PER_ROW = 6

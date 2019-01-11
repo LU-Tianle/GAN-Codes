@@ -22,10 +22,10 @@ from gan import Gan
 # ==============================================================================
 DATASET = 'MNIST'  # 'MNIST' or 'Fashion MNIST'
 # networks hyper parameters: details in dcgan_nets.py
-GEN_CONV_FIRST_LAYER_FILTERS = 128
+GEN_CONV_FIRST_LAYER_FILTERS = 256
 GEN_CONV_LAYERS = 2
 DISC_FIRST_LAYER_FILTERS = 64
-DISC_CONV_LAYERS = 3
+DISC_CONV_LAYERS = 2
 
 # hyper-parameters:
 BATCH_SIZE = 64
@@ -33,19 +33,19 @@ EPOCHS = 100
 NOISE_DIM = 100
 
 # vanilla gan training hyper-parameters
-DISCRIMINATOR_TRAINING_LOOP = 1
-GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='generator_optimizer_adam')
-DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='discriminator_optimizer_adam')
-TRAINING_ALGORITHM = "vanilla"
+# DISCRIMINATOR_TRAINING_LOOP = 1
+# GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5, name='generator_optimizer_adam')
+# DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5, name='discriminator_optimizer_adam')
+# TRAINING_ALGORITHM = "vanilla"
 
 # wgan training hyper-parameters
-# DISCRIMINATOR_TRAINING_LOOP = 5
-# GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=2 * 1e-4, name='generator_optimizer_RMSProp')
-# DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=2 * 1e-4, name='discriminator_optimizer_RMSProp')
-# TRAINING_ALGORITHM = "wgan"
+DISCRIMINATOR_TRAINING_LOOP = 1
+GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=2e-4, name='generator_optimizer_RMSProp')
+DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='discriminator_optimizer_RMSProp')
+TRAINING_ALGORITHM = "wgan"
 
 # other parameters: details in gan.py
-SAVE_PATH = os.getcwd() + os.path.sep + 'saved_data_1'
+SAVE_PATH = os.getcwd() + os.path.sep + 'wgan'
 CONTINUE_TRAINING = False
 INTERVAL_EPOCHS = 5
 IMAGES_PER_ROW = 6
@@ -108,15 +108,14 @@ if __name__ == '__main__':
     # show_mnist_pictures(6)
     # construct the networks and training algorithm
     image_shape = mnist_dataset.output_shapes.as_list()
-    generator = dcgan_nets.Generator(image_shape=image_shape, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS,
-                                     noise_dim=NOISE_DIM)
+    generator = dcgan_nets.Generator(image_shape=image_shape, noise_dim=NOISE_DIM,
+                                     first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS)
     discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS)
     gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH)
     components.create_folder(SAVE_PATH, CONTINUE_TRAINING)
     # save parameters in save_path/parameter.txt"
-    components.save_parameters(first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS,
-                               first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
-                               discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
+    components.save_parameters(first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS, conv_layers=DISC_CONV_LAYERS,
+                               first_layer_filters=DISC_FIRST_LAYER_FILTERS, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
                                dataset=DATASET, batch_size=BATCH_SIZE, noise_dim=NOISE_DIM, training_algorithm=TRAINING_ALGORITHM, save_path=SAVE_PATH)
     # training
     gan.train(dataset=mnist_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, noise_dim=NOISE_DIM, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
@@ -125,4 +124,4 @@ if __name__ == '__main__':
     # tensorboard --logdir=E:\workspace\GAN\mnist\saved_data_1
     # localhost:6006
     # generate images using the latest saved check points and the images will be saved in 'save_path/images/'
-    # Gan.generate_image(save_path=SAVE_PATH, noise_dim=NOISE_DIM, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)
+    # Gan.generate_image(save_path=SAVE_PATH, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)
