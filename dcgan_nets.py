@@ -26,13 +26,14 @@ class Generator:
         every conv2d_transpose layers has kernel_size=(5, 5) (the first conv2d_transpose layers is (3,3)),
             strides=[2, 2] and the kernel_initializer is tf.truncated_normal_initializer(stddev=0.02)
         batch normalization and swish activation is applied to every layer except the output layer
-        the output layer is also a conv2d_transpose layers with a tanh activation and no batch normalization
+        and then there is a conv2d_1x1-batch_norm-swish layer
+        the output layer is a conv2d_transpose-batch_norm-swish-conv2d_1x1-tanh layers
         layer structures:
         random noise -> project, batch_norm,swish and reshape: [batch_size, first_layer_filters, height / (2 ** layers), width / (2 ** layers)]
-        ->conv2d_trans_batch_norm_swish_1: [batch_size, first_layer_filters, height / (2 ** layers), width / (2 ** layers)]
-        ->conv2d_trans_batch_norm_swish_2: [batch_size, first_layer_filters // 2, height / (2 ** (layers-1)), width / (2 ** (layers-1))]
+        ->conv2d_trans-batch_norm-conv1x1-batch_norm-swish_1: [batch_size, first_layer_filters, height / (2 ** layers), width / (2 ** layers)]
+        ->conv2d_trans-conv1x1-batch_norm-swish_2: [batch_size, first_layer_filters // 2, height / (2 ** (layers-1)), width / (2 ** (layers-1))]
         ->...
-        ->conv2d_trans_batch_norm_swish_(layers-1)
+        ->conv2d_trans-conv1x1-batch_norm-swish_(layers-1)
         ->conv2d_trans_tanh_layers: [batch_size, channel, height, width]
         the height or width of the output images are not compatible with the conv2d_trans layers
         :param image_shape: output image shape [channel, height, width]
@@ -40,30 +41,38 @@ class Generator:
         :param conv_trans_layers: the numbers of conv2d_transpose layers of the generator
         """
         [self.channel, self.height, self.width] = image_shape
-        assert (self.height / (2 ** conv_trans_layers)) % 1 == 0 and (self.width / (2 ** conv_trans_layers)) % 1 == 0, \
-            'the height or width of the output images are not compatible with the conv2d_trans layers'
         assert conv_trans_layers >= 2, 'there must be more than 2 conv2d_transpose layers of the generator'
         # the first layer is project and reshape the random noise
         self.noise_dim = noise_dim
-        self.project_shape = [-1, first_conv_trans_layer_filters, self.height // (2 ** conv_trans_layers), self.width // (2 ** conv_trans_layers)]
+        self.project_shape = [-1, 2 * first_conv_trans_layer_filters, self.height // (2 ** conv_trans_layers), self.width // (2 ** conv_trans_layers)]
         self.project = tf.layers.Dense(units=functools.reduce(lambda x, y: abs(x) * y, self.project_shape), use_bias=False,
                                        kernel_initializer=tf.truncated_normal_initializer(stddev=0.02), name="generator/project/project")
         self.project_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='generator/project/batch_norm')
+        first_layer_padding = 'same' if (self.height / (2 ** conv_trans_layers)) % 1 == 0 and (self.width / (2 ** conv_trans_layers)) % 1 == 0 else 'valid'
         self.conv_trans_batch_norm_layers = []  # conv2d transpose layers with batch normalization
         for layer in range(conv_trans_layers - 1):
             # the filters in each layer should not less than 8
-            filters = first_conv_trans_layer_filters // (2 ** layer) if first_conv_trans_layer_filters / (2 ** layer) >= 8 else 8
-            kernel_size = (3, 3) if layer == 0 else (5, 5)
-            conv_trans = tf.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size, strides=(2, 2), padding='same', use_bias=False,
+            filters = first_conv_trans_layer_filters // (4 ** layer)
+            padding = first_layer_padding if layer == 0 else 'same'
+            conv_trans = tf.layers.Conv2DTranspose(filters=filters, kernel_size=(3, 3), strides=(2, 2), padding=padding, use_bias=False,
                                                    kernel_initializer=tf.random_normal_initializer(stddev=0.02), data_format="channels_first",
                                                    name='generator/conv_trans_%d/conv_trans' % (layer + 1))
-            batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='generator/conv_trans_%d/batch_normalization' % (layer + 1))
-            name = 'generator/conv_trans_%d/swish' % (layer + 1)
-            self.conv_trans_batch_norm_layers.append((conv_trans, batch_norm, name))
-        # output layer whose output shape is [batch_size, channel, height, width], no batch normalization
-        self.output_layer = tf.layers.Conv2DTranspose(filters=self.channel, kernel_size=(5, 5), strides=(2, 2), padding='same', data_format="channels_first",
+            conv_trans_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='generator/conv_trans_%d/conv_trans_batch_norm' % (layer + 1))
+            micro_net = tf.layers.Conv2D(filters=filters / 2, kernel_size=(1, 1), strides=(1, 1), padding='same', use_bias=False,
+                                         kernel_initializer=tf.random_normal_initializer(stddev=0.02), data_format="channels_first",
+                                         name='generator/conv_trans_%d/micro_net' % (layer + 1))
+            micro_net_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='generator/conv_trans_%d/micro_net_batch_norm' % (layer + 1))
+            name = 'generator/conv_trans_%d/' % (layer + 1)
+            self.conv_trans_batch_norm_layers.append((conv_trans, conv_trans_batch_norm, micro_net, micro_net_batch_norm, name))
+        # output layer whose output shape is [batch_size, channel, height, width], no batch normalization after micro_net
+        self.output_layer = tf.layers.Conv2DTranspose(filters=first_conv_trans_layer_filters // (4 ** (conv_trans_layers - 1)),
+                                                      kernel_size=(5, 5), strides=(2, 2), padding='same', data_format="channels_first",
                                                       kernel_initializer=tf.random_normal_initializer(stddev=0.02),
                                                       name='generator/conv_trans_%d/conv_trans' % conv_trans_layers)
+        self.output_layer_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='generator/conv_trans_%d/conv_trans_batch_norm' % conv_trans_layers)
+        self.output_layer_micro_net = tf.layers.Conv2D(filters=self.channel, kernel_size=(1, 1), strides=(1, 1), padding='same', use_bias=False,
+                                                       kernel_initializer=tf.random_normal_initializer(stddev=0.02), data_format="channels_first",
+                                                       name='generator/conv_trans_%d/micro_net' % conv_trans_layers)
 
     def __call__(self, batch_z, training, name):
         """generate images by random noise(batch_z)
@@ -72,11 +81,15 @@ class Generator:
         batch_z = self.project_batch_norm(batch_z, training=training)
         batch_z = tf.nn.swish(batch_z, name=('generator/project/swish/' + name))
         batch_z = tf.reshape(batch_z, shape=self.project_shape, name=('generator/reshape/' + name))
-        for (conv_trans, batch_norm, layer_name) in self.conv_trans_batch_norm_layers:
+        for (conv_trans, conv_trans_batch_norm, micro_net, micro_net_batch_norm, layer_name) in self.conv_trans_batch_norm_layers:
             batch_z = conv_trans(batch_z)
-            batch_z = batch_norm(batch_z, training=training)
-            batch_z = tf.nn.swish(batch_z, name=(layer_name + '/' + name))
+            batch_z = conv_trans_batch_norm(batch_z)
+            batch_z = tf.nn.swish(batch_z, name=(layer_name + 'conv_trans_swish/' + name))
+            batch_z = micro_net(batch_z)
+            batch_z = micro_net_batch_norm(batch_z, training=training)
+            batch_z = tf.nn.swish(batch_z, name=(layer_name + 'micro_net_swish/' + name))
         batch_z = self.output_layer(batch_z)
+        batch_z = self.output_layer_micro_net(batch_z)
         batch_z = tf.nn.tanh(batch_z, name=('generator/output/during_' + name))
         return batch_z
 
@@ -94,7 +107,7 @@ class Generator:
 
 
 class Discriminator:
-    def __init__(self, first_layer_filters, conv_layers):
+    def __init__(self, first_layer_filters, conv_layers, drop_out=1):
         """
         create the discriminator with the input conv2d layer numbers and first layer filter numbers.
         each layer has first_layer_filters*(2**(layer_index-1)) filters and no pooling are used.

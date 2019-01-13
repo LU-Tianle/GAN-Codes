@@ -64,7 +64,8 @@ class Gan:
         noise_for_training = tf.random_normal([batch_size, noise_dim], name='noise_for_training')
         # discriminator loss
         generated_images = self.generator(noise_for_training, training=False, name='training_discriminator')
-        discriminator_input = tf.concat([iterator.get_next(), generated_images], axis=0, name='discriminator_input')
+        discriminator_input = tf.stop_gradient(tf.concat([iterator.get_next(), generated_images], axis=0, name='discriminator_input'),
+                                               name='stop_generator_gradient_for_training_discriminator')
         discriminator_output = self.discriminator(discriminator_input, training=True, name='training_discriminator')
         discriminator_loss = Gan.__discriminator_loss(discriminator_output, batch_size, algorithm)
         # generator loss
@@ -85,15 +86,7 @@ class Gan:
             train_discriminator = discriminator_optimizer.minimize(discriminator_loss, var_list=self.discriminator.var_list)
             train_generator = generator_optimizer.minimize(generator_loss, var_list=self.generator.var_list)
         # weight clipping in wgan
-        if algorithm == 'wgan':
-            with tf.name_scope('discriminator/clipping'):
-                clipping_vars = []
-                for var in self.discriminator.var_list:
-                    if 'batch_normalization' not in var.name:
-                        clipping_vars.append(var)
-                clip = [var.assign(tf.clip_by_value(var, -0.01, 0.01, name='clip/' + var.op.name), name='update/' + var.op.name) for var in clipping_vars]
-        else:
-            clip = tf.no_op(name='no_op')
+        clip = Gan.weight_clipping(self.discriminator.var_list) if algorithm == 'wgan' else tf.no_op(name='no_op')
         # images will be generated after save_intervals epochs using the same noise
         noise_for_generation = tf.get_variable(name='noise_for_generation', shape=[images_per_row ** 2, noise_dim],
                                                initializer=tf.random_normal_initializer, trainable=False)
@@ -208,3 +201,13 @@ class Gan:
                 plt.axis('off')
         plt.savefig(output_path + os.path.sep + 'epoch_{:04d}_{}.png'.format(epoch, index))
         plt.close(fig)
+
+    @staticmethod
+    def weight_clipping(var_list):
+        with tf.name_scope('discriminator/clipping'):
+            clipping_vars = []
+            for var in var_list:
+                if 'batch_normalization' not in var.name:
+                    clipping_vars.append(var)
+            clip = [var.assign(tf.clip_by_value(var, -0.01, 0.01, name='clip/' + var.op.name), name='update/' + var.op.name) for var in clipping_vars]
+        return clip

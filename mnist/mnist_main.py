@@ -23,13 +23,13 @@ from gan import Gan
 DATASET = 'MNIST'  # 'MNIST' or 'Fashion MNIST'
 # networks hyper parameters: details in dcgan_nets.py
 GEN_CONV_FIRST_LAYER_FILTERS = 256
-GEN_CONV_LAYERS = 2
+GEN_CONV_LAYERS = 3
 DISC_FIRST_LAYER_FILTERS = 64
 DISC_CONV_LAYERS = 2
 
 # hyper-parameters:
 BATCH_SIZE = 64
-EPOCHS = 100
+EPOCHS = 150
 NOISE_DIM = 100
 
 # vanilla gan training hyper-parameters
@@ -39,10 +39,11 @@ NOISE_DIM = 100
 # TRAINING_ALGORITHM = "vanilla"
 
 # wgan training hyper-parameters
-DISCRIMINATOR_TRAINING_LOOP = 1
-GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=2e-4, name='generator_optimizer_RMSProp')
+DISCRIMINATOR_TRAINING_LOOP = 5
+GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='generator_optimizer_RMSProp')
 DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='discriminator_optimizer_RMSProp')
 TRAINING_ALGORITHM = "wgan"
+# TRAINING_ALGORITHM = "sn-wgan"
 
 # other parameters: details in gan.py
 SAVE_PATH = os.getcwd() + os.path.sep + 'wgan'
@@ -57,7 +58,6 @@ IMAGES_PER_ROW_FOR_GENERATING = 6
 
 
 # ==============================================================================
-
 
 def get_mnist_dataset(use_testset=False):
     """

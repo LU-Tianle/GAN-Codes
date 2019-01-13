@@ -22,9 +22,9 @@ import cv2
 # ==============================================================================
 DATASET = 'CIFAR-10'
 # networks hyper parameters: details in dcgan_nets.py
-GEN_CONV_FIRST_LAYER_FILTERS = 512
+GEN_CONV_FIRST_LAYER_FILTERS = 256
 GEN_CONV_LAYERS = 3
-DISC_FIRST_LAYER_FILTERS = 256
+DISC_FIRST_LAYER_FILTERS = 128
 DISC_CONV_LAYERS = 3
 
 # training hyper parameters:
