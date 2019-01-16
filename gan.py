@@ -48,8 +48,8 @@ class Gan:
         :param discriminator_training_loop: update generator once while updating discriminator more times
         :param discriminator_optimizer: tf.train.Optimizer
         :param generator_optimizer: tf.train.Optimizer
-        :param save_intervals: save generated images every interval epochs in the self.save_path while save check points every (2*interval epochs)
-        :param images_per_row: the number of generated images per row/column in a figure every interval epochs
+        :param save_intervals: save check points every interval epochs in the self.save_path
+        :param images_per_row: the number of generated images per row/column in a figure every epochs
         :param continue_training: continue training using the latest check points in the self.save_path
         """
         components.create_folder(self.check_points_path, continue_training)
@@ -86,7 +86,7 @@ class Gan:
             train_discriminator = discriminator_optimizer.minimize(discriminator_loss, var_list=self.discriminator.var_list)
             train_generator = generator_optimizer.minimize(generator_loss, var_list=self.generator.var_list)
         # weight clipping in wgan
-        clip = Gan.weight_clipping(self.discriminator.var_list) if algorithm == 'wgan' else tf.no_op(name='no_op')
+        clip = Gan.__weight_clipping(self.discriminator.var_list) if algorithm == 'wgan' else tf.no_op(name='no_op')
         # images will be generated after save_intervals epochs using the same noise
         noise_for_generation = tf.get_variable(name='noise_for_generation', shape=[images_per_row ** 2, noise_dim],
                                                initializer=tf.random_normal_initializer, trainable=False)
@@ -96,7 +96,7 @@ class Gan:
             if continue_training:  # continue training from the latest check point
                 latest_training_epochs_path = tf.train.latest_checkpoint(self.check_points_path)
                 assert latest_training_epochs_path is not None, "no check points found"
-                latest_training_epochs = int(latest_training_epochs_path.split("-")[1])  # load training epochs
+                latest_training_epochs = int(latest_training_epochs_path.split("-")[-1])  # load training epochs
                 saver.restore(sess, latest_training_epochs_path)
                 iterations = sess.run('saved_iterations:0')  # load training iterations
             else:  # start a initial training
@@ -128,13 +128,12 @@ class Gan:
                 except tf.errors.OutOfRangeError:
                     pass
                 print('Time taken for epoch {} is {} sec'.format(epoch + latest_training_epochs + 1, time.time() - epoch_start_time))
+                # saving generated images after each epoch
+                predictions = sess.run(generate_images_each_epoch)
+                Gan.__save_images(self.output_image_path, predictions, images_per_row, epoch + latest_training_epochs + 1)
                 if (epoch + latest_training_epochs + 1) % save_intervals == 0:
-                    predictions = sess.run(generate_images_each_epoch)
-                    # saving the model(checkpoint) and generated images
-                    Gan.__save_images(self.output_image_path, predictions, images_per_row, epoch + latest_training_epochs + 1)
-                    if (epoch + latest_training_epochs + 1) % (2 * save_intervals) == 0:
-                        sess.run(tf.assign(saved_iterations, iterations))
-                        saver.save(sess, os.path.join(self.check_points_path, 'check_points'), epoch + latest_training_epochs + 1)
+                    sess.run(tf.assign(saved_iterations, iterations))
+                    saver.save(sess, os.path.join(self.check_points_path, 'check_points'), epoch + latest_training_epochs + 1)
             writer.close()
             print('Time taken for training is {} min'.format((time.time() - training_start_time) / 60))
 
@@ -189,21 +188,22 @@ class Gan:
     def __save_images(output_path, predictions, images_per_row, epoch, index=0):
         fig = plt.figure(figsize=(images_per_row, images_per_row))
         fig.suptitle('epoch_{:04d}.png'.format(epoch))
-        for i in range(images_per_row ** 2):
-            plt.subplot(images_per_row, images_per_row, i + 1)
-            if predictions.shape[1] == 1:
-                plt.imshow(predictions[i][0] * 127.5 + 127.5, cmap='gray')
+        if predictions.shape[1] == 1:
+            for i in range(images_per_row ** 2):
+                plt.subplot(images_per_row, images_per_row, i + 1)
+                plt.imshow(predictions[i][0], cmap='gray')
                 plt.axis('off')
-            else:
-                image = np.around(predictions[i] * 127.5 + 127.5).astype(int)
-                image = np.transpose(image, [2, 1, 0])
-                plt.imshow(image)
+        else:
+            images = np.around(np.transpose(predictions, [0, 2, 3, 1]) * 127.5 + 127.5).astype(int)
+            for i in range(images_per_row ** 2):
+                plt.subplot(images_per_row, images_per_row, i + 1)
+                plt.imshow(images[i])
                 plt.axis('off')
         plt.savefig(output_path + os.path.sep + 'epoch_{:04d}_{}.png'.format(epoch, index))
         plt.close(fig)
 
     @staticmethod
-    def weight_clipping(var_list):
+    def __weight_clipping(var_list):
         with tf.name_scope('discriminator/clipping'):
             clipping_vars = []
             for var in var_list:

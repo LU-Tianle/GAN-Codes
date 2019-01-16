@@ -12,6 +12,9 @@ import functools
 
 import tensorflow as tf
 
+from layers_with_spectral_norm import Conv2D
+from layers_with_spectral_norm import Dense
+
 
 class Generator:
     """
@@ -47,7 +50,7 @@ class Generator:
         self.project_shape = [-1, 2 * first_conv_trans_layer_filters, self.height // (2 ** conv_trans_layers), self.width // (2 ** conv_trans_layers)]
         self.project = tf.layers.Dense(units=functools.reduce(lambda x, y: abs(x) * y, self.project_shape), use_bias=False,
                                        kernel_initializer=tf.truncated_normal_initializer(stddev=0.02), name="generator/project/project")
-        self.project_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='generator/project/batch_norm')
+        self.project_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, momentum=0.9, name='generator/project/batch_norm')
         first_layer_padding = 'same' if (self.height / (2 ** conv_trans_layers)) % 1 == 0 and (self.width / (2 ** conv_trans_layers)) % 1 == 0 else 'valid'
         self.conv_trans_batch_norm_layers = []  # conv2d transpose layers with batch normalization
         for layer in range(conv_trans_layers - 1):
@@ -57,11 +60,11 @@ class Generator:
             conv_trans = tf.layers.Conv2DTranspose(filters=filters, kernel_size=(3, 3), strides=(2, 2), padding=padding, use_bias=False,
                                                    kernel_initializer=tf.random_normal_initializer(stddev=0.02), data_format="channels_first",
                                                    name='generator/conv_trans_%d/conv_trans' % (layer + 1))
-            conv_trans_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='generator/conv_trans_%d/conv_trans_batch_norm' % (layer + 1))
+            conv_trans_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, momentum=0.9, name='generator/conv_trans_%d/conv_trans_batch_norm' % (layer + 1))
             micro_net = tf.layers.Conv2D(filters=filters / 2, kernel_size=(1, 1), strides=(1, 1), padding='same', use_bias=False,
                                          kernel_initializer=tf.random_normal_initializer(stddev=0.02), data_format="channels_first",
                                          name='generator/conv_trans_%d/micro_net' % (layer + 1))
-            micro_net_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='generator/conv_trans_%d/micro_net_batch_norm' % (layer + 1))
+            micro_net_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, momentum=0.9, name='generator/conv_trans_%d/micro_net_batch_norm' % (layer + 1))
             name = 'generator/conv_trans_%d/' % (layer + 1)
             self.conv_trans_batch_norm_layers.append((conv_trans, conv_trans_batch_norm, micro_net, micro_net_batch_norm, name))
         # output layer whose output shape is [batch_size, channel, height, width], no batch normalization after micro_net
@@ -69,7 +72,8 @@ class Generator:
                                                       kernel_size=(5, 5), strides=(2, 2), padding='same', data_format="channels_first",
                                                       kernel_initializer=tf.random_normal_initializer(stddev=0.02),
                                                       name='generator/conv_trans_%d/conv_trans' % conv_trans_layers)
-        self.output_layer_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='generator/conv_trans_%d/conv_trans_batch_norm' % conv_trans_layers)
+        self.output_layer_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, momentum=0.9,
+                                                                    name='generator/conv_trans_%d/conv_trans_batch_norm' % conv_trans_layers)
         self.output_layer_micro_net = tf.layers.Conv2D(filters=self.channel, kernel_size=(1, 1), strides=(1, 1), padding='same', use_bias=False,
                                                        kernel_initializer=tf.random_normal_initializer(stddev=0.02), data_format="channels_first",
                                                        name='generator/conv_trans_%d/micro_net' % conv_trans_layers)
@@ -107,7 +111,7 @@ class Generator:
 
 
 class Discriminator:
-    def __init__(self, first_layer_filters, conv_layers, drop_out=1):
+    def __init__(self, first_layer_filters, conv_layers, spectral_norm):
         """
         create the discriminator with the input conv2d layer numbers and first layer filter numbers.
         each layer has first_layer_filters*(2**(layer_index-1)) filters and no pooling are used.
@@ -120,22 +124,24 @@ class Discriminator:
         """
         assert conv_layers >= 2, 'there must be more than 1 conv2d layers of the discriminator'
         # input layer, conv2d with no batch normalization
-        self.input_layer = tf.layers.Conv2D(filters=first_layer_filters, kernel_size=(5, 5), strides=[2, 2],
-                                            padding='same', data_format="channels_first", activation=tf.nn.swish,
-                                            kernel_initializer=tf.truncated_normal_initializer(stddev=0.02), name='discriminator/conv_1/conv2d')
+        self.input_layer = Conv2D(filters=first_layer_filters, kernel_size=(5, 5), strides=[2, 2], padding='same', data_format="channels_first",
+                                  spectral_norm=spectral_norm, activation=tf.nn.swish, kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
+                                  name='discriminator/conv_1/conv2d')
         self.conv_batch_norm_layers = []  # conv2d and batch normalization from the second layer
         for layer in range(2, conv_layers + 1):
             kernel_size = (3, 3) if layer == conv_layers else (5, 5)
-            conv = tf.layers.Conv2D(filters=(2 ** (layer - 1)) * first_layer_filters, kernel_size=kernel_size, strides=[2, 2],
-                                    padding='same', data_format="channels_first", use_bias=False,
-                                    kernel_initializer=tf.truncated_normal_initializer(stddev=0.02), name='discriminator/conv_%d/conv2d' % layer)
-            batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='discriminator/conv_%d/batch_normalization' % layer)
+            conv = Conv2D(filters=(2 ** (layer - 1)) * first_layer_filters, kernel_size=kernel_size, strides=[2, 2], padding='same', use_bias=False,
+                          data_format="channels_first", kernel_initializer=tf.truncated_normal_initializer(stddev=0.02), spectral_norm=spectral_norm,
+                          name='discriminator/conv_%d/conv2d' % layer)
+            batch_norm1 = tf.layers.BatchNormalization(epsilon=1e-5, momentum=0.9, name='discriminator/conv_%d/conv_batch_normalization' % layer)
+            conv_1x1 = Conv2D()
+            batch_norm2 = tf.layers.BatchNormalization(epsilon=1e-5, momentum=0.9, name='discriminator/conv_%d/conv_1x1_batch_normalization' % layer)
             name = 'discriminator/conv_%d/swish' % layer
-            self.conv_batch_norm_layers.append((conv, batch_norm, name))
+            self.conv_batch_norm_layers.append((conv, batch_norm1, conv_1x1, batch_norm2, name))
         self.output_layer_flatten = tf.layers.Flatten(name='discriminator/output/flatten')
-        self.output_layer_fc = tf.layers.Dense(units=1, use_bias=False, kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
-                                               name="discriminator/output/fc")
-        self.output_layer_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, name='discriminator/output/batch_normalization')
+        self.output_layer_fc = Dense(units=1, use_bias=False, spectral_norm=spectral_norm, kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
+                                     name="discriminator/output/fc")
+        self.output_layer_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, momentum=0.9, name='discriminator/output/batch_normalization')
 
     def __call__(self, batch, training, name):
         """
