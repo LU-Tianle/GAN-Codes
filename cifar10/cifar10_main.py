@@ -35,20 +35,24 @@ EPOCHS = 300
 NOISE_DIM = 100
 
 # vanilla gan training hyper-parameters
-DISCRIMINATOR_TRAINING_LOOP = 1
-GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='GENERATOR_OPTIMIZER_ADAM')
-DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='DISCRIMINATOR_OPTIMIZER_ADAM')
-TRAINING_ALGORITHM = "vanilla"
+# DISCRIMINATOR_TRAINING_LOOP = 1
+# GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='GENERATOR_OPTIMIZER_ADAM')
+# DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2 * 1e-4, beta1=0.5, name='DISCRIMINATOR_OPTIMIZER_ADAM')
+# TRAINING_ALGORITHM = "vanilla"
+# SPECTRAL_NORM = False
+# USE_CONV_1X1 = False
 
 # wgan training hyper-parameters
-# DISCRIMINATOR_TRAINING_LOOP = 5
-# GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='generator_optimizer_RMSProp')
-# DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='discriminator_optimizer_RMSProp')
-# TRAINING_ALGORITHM = "wgan"
+DISCRIMINATOR_TRAINING_LOOP = 5
+GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='generator_optimizer_RMSProp')
+DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='discriminator_optimizer_RMSProp')
+TRAINING_ALGORITHM = "sn-wgan"
+SPECTRAL_NORM = True
+USE_CONV_1X1 = False
 
 # other parameters: details in gan.py
 SAVE_PATH = os.getcwd() + os.path.sep + 'inception-gan'
-CONTINUE_TRAINING = True
+CONTINUE_TRAINING = False
 INTERVAL_EPOCHS = 5
 IMAGES_PER_ROW = 6
 
@@ -101,8 +105,11 @@ if __name__ == '__main__':
     image_shape = cifar10_dataset.output_shapes.as_list()
     # generator = dcgan_nets.Generator(image_shape=image_shape, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS,
     #                                  conv_trans_layers=GEN_CONV_LAYERS, noise_dim=NOISE_DIM)
-    generator = Generator(image_shape=image_shape, noise_dim=NOISE_DIM)
-    discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS)
+    # generator = Generator(image_shape=image_shape, noise_dim=NOISE_DIM)
+    generator = dcgan_nets.Generator(image_shape=image_shape, noise_dim=NOISE_DIM, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS,
+                                     conv_trans_layers=GEN_CONV_LAYERS, )
+    discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
+                                             spectral_norm=SPECTRAL_NORM, use_conv_1x1=USE_CONV_1X1)
     gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH)
     # training
     components.create_folder(SAVE_PATH, CONTINUE_TRAINING)

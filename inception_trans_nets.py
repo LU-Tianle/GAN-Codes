@@ -22,15 +22,14 @@ class Generator:
         self.inception1 = InceptionTrans1(unpooling_filters=[64], conv_trans_3x3_filters=[256, 64])  # 256 -> 128
         self.inception2 = InceptionTrans2(unpooling_filters=[16], conv_trans_3x3_filters=[128, 16], conv_trans_5x5_filters=[128, 128, 32])  # 128 -> 64
         self.inception3 = InceptionTrans3(unpooling_filters=[8], conv_trans_5x5_filters=[64, 64, 8], conv_trans_7x7_filters=[64, 64, 16])  # 64 -> 32
-        self.conv_trans = tf.layers.Conv2DTranspose(filters=self.channel, kernel_size=(5, 5), strides=(1, 1), padding='same', use_bias=False,
-                                                    kernel_initializer=tf.random_normal_initializer(stddev=0.02), data_format="channels_first",
-                                                    name='generator/merge_channels/conv_1x1')  # 32 -> channel
+        self.conv_trans = tf.layers.Conv2DTranspose(filters=self.channel, kernel_size=(3, 3), strides=(1, 1), padding='same', data_format="channels_first",
+                                                    kernel_initializer=tf.random_normal_initializer(stddev=0.02), name='generator/merge_channels/conv_1x1')
 
     def __call__(self, batch_z, training, name):
         batch_z = self.project(batch_z)
         batch_z = self.project_batch_norm(batch_z, training=training)
         batch_z = tf.nn.swish(batch_z, name=('generator/project/swish/' + name))
-        batch_z = tf.reshape(batch_z, shape=self.project_shape, name=('generator/reshape/' + name))
+        batch_z = tf.reshape(batch_z, shape=self.project_shape, name=('generator/project/reshape/' + name))
         batch_z = self.inception1(batch_z, training=training, name=name)
         batch_z = self.inception2(batch_z, training=training, name=name)
         batch_z = self.inception3(batch_z, training=training, name=name)

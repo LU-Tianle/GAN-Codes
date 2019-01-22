@@ -32,8 +32,6 @@ class Gan:
         self.check_points_path = os.path.join(save_path, 'check_points')
         self.output_image_path = os.path.join(save_path, 'images_during_training')
         self.generator.generate()
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
 
     def train(self, dataset, batch_size, epochs, noise_dim, algorithm,
               discriminator_training_loop, discriminator_optimizer, generator_optimizer,
@@ -52,6 +50,8 @@ class Gan:
         :param images_per_row: the number of generated images per row/column in a figure every epochs
         :param continue_training: continue training using the latest check points in the self.save_path
         """
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
         components.create_folder(self.check_points_path, continue_training)
         components.create_folder(self.output_image_path, continue_training)
         # saved training iterations
@@ -64,8 +64,8 @@ class Gan:
         noise_for_training = tf.random_normal([batch_size, noise_dim], name='noise_for_training')
         # discriminator loss
         generated_images = self.generator(noise_for_training, training=False, name='training_discriminator')
-        discriminator_input = tf.stop_gradient(tf.concat([iterator.get_next(), generated_images], axis=0, name='discriminator_input'),
-                                               name='stop_generator_gradient_for_training_discriminator')
+        discriminator_input = tf.concat([iterator.get_next(), generated_images], axis=0, name='discriminator_input')
+        discriminator_input = tf.stop_gradient(discriminator_input, name='stop_generator_gradient')
         discriminator_output = self.discriminator(discriminator_input, training=True, name='training_discriminator')
         discriminator_loss = Gan.__discriminator_loss(discriminator_output, batch_size, algorithm)
         # generator loss
@@ -73,26 +73,21 @@ class Gan:
         discriminator_output = self.discriminator(generated_images, training=False, name='training_generator')
         generator_loss = Gan.__generator_loss(discriminator_output, algorithm)
         # save tensorboard files
-        with tf.name_scope('tensorboard_summary'):
-            if algorithm == 'vanilla':
-                tf.summary.scalar(name='JS_divergence', tensor=-0.5 * discriminator_loss + 1)
-            elif algorithm == 'wgan' or algorithm == 'sn-wgan':
-                tf.summary.scalar(name='Wasserstein_distance', tensor=-discriminator_loss)
-            else:
-                raise ValueError('unknown input training algorithm')
-            summaries = tf.summary.merge_all()
+        summaries = Gan.__save_summaries(algorithm, discriminator_loss)
         # optimization
-        with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):  # update the population statistics of batch normalization before training
-            train_discriminator = discriminator_optimizer.minimize(discriminator_loss, var_list=self.discriminator.var_list)
-            train_generator = generator_optimizer.minimize(generator_loss, var_list=self.generator.var_list)
+        with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+            train_discriminator = discriminator_optimizer.minimize(discriminator_loss, var_list=self.discriminator.var_list, name='discriminator_optimizer')
+            train_generator = generator_optimizer.minimize(generator_loss, var_list=self.generator.var_list, name='generator_optimizer')
         # weight clipping in wgan
-        clip = Gan.__weight_clipping(self.discriminator.var_list) if algorithm == 'wgan' else tf.no_op(name='no_op')
+        if algorithm == 'wgan':
+            with tf.control_dependencies([train_discriminator]):
+                train_discriminator = Gan.__weight_clipping(self.discriminator.var_list)
         # images will be generated after save_intervals epochs using the same noise
         noise_for_generation = tf.get_variable(name='noise_for_generation', shape=[images_per_row ** 2, noise_dim],
-                                               initializer=tf.random_normal_initializer, trainable=False)
+                                               initializer=tf.random_normal_initializer(), trainable=False)
         generate_images_each_epoch = self.generator(noise_for_generation, training=False, name='inference_epoch')
         saver = tf.train.Saver(max_to_keep=3)
-        with tf.Session() as sess:
+        with tf.Session(config=config) as sess:
             if continue_training:  # continue training from the latest check point
                 latest_training_epochs_path = tf.train.latest_checkpoint(self.check_points_path)
                 assert latest_training_epochs_path is not None, "no check points found"
@@ -118,8 +113,6 @@ class Gan:
                                     _, save_summary = sess.run([train_discriminator, summaries])
                                 else:
                                     sess.run([train_discriminator])
-                                if algorithm == 'wgan':  # wgan clipping
-                                    sess.run([clip])
                         else:
                             _, save_summary = sess.run([train_discriminator, summaries])
                         writer.add_summary(save_summary, iterations)
@@ -136,6 +129,17 @@ class Gan:
                     saver.save(sess, os.path.join(self.check_points_path, 'check_points'), epoch + latest_training_epochs + 1)
             writer.close()
             print('Time taken for training is {} min'.format((time.time() - training_start_time) / 60))
+
+    @staticmethod
+    def __save_summaries(algorithm, discriminator_loss):
+        with tf.name_scope('tensorboard_summary'):
+            if algorithm == 'vanilla':
+                tf.summary.scalar(name='JS_divergence', tensor=-0.5 * discriminator_loss + 1)
+            elif algorithm == 'wgan' or algorithm == 'sn-wgan':
+                tf.summary.scalar(name='Wasserstein_distance', tensor=-discriminator_loss)
+            else:
+                raise ValueError('unknown input training algorithm')
+            return tf.summary.merge_all()
 
     @staticmethod
     def generate_image(save_path, image_pages, images_per_row):
@@ -209,5 +213,6 @@ class Gan:
             for var in var_list:
                 if 'batch_normalization' not in var.name:
                     clipping_vars.append(var)
-            clip = [var.assign(tf.clip_by_value(var, -0.01, 0.01, name='clip/' + var.op.name), name='update/' + var.op.name) for var in clipping_vars]
+            clip = ([var.assign(tf.clip_by_value(var, -0.01, 0.01, name='clip/' + var.op.name), name='update/' + var.op.name) for var in clipping_vars])
+            clip = tf.tuple(clip, name='tuple')
         return clip
