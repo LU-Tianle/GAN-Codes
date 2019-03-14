@@ -8,32 +8,32 @@
 training algorithms of vanilla gan
 """
 import os
-import shutil
 import time
 
-import matplotlib.pyplot as plt
+import imageio
 import numpy as np
 import tensorflow as tf
-
 import components
+import plot
 
 
 class Gan:
-    def __init__(self, generator, discriminator, save_path):
+    def __init__(self, generator, discriminator, noise_dim, save_path):
         """
         construct the gan nets
         :param generator: the object of generator networks
         :param discriminator: the networks of discriminator networks
+         :param noise_dim: noise dim for generation
         :param save_path: check points and output image will be saved in folders in this path
         """
         self.generator = generator
         self.discriminator = discriminator
+        self.noise_dim = noise_dim
         self.save_path = save_path
         self.check_points_path = os.path.join(save_path, 'check_points')
         self.output_image_path = os.path.join(save_path, 'images_during_training')
-        self.generator.generate()
 
-    def train(self, dataset, batch_size, epochs, noise_dim, algorithm,
+    def train(self, dataset, batch_size, epochs, algorithm,
               discriminator_training_loop, discriminator_optimizer, generator_optimizer,
               save_intervals, images_per_row, continue_training=False):
         """
@@ -41,7 +41,6 @@ class Gan:
         :param dataset: training dataset
         :param batch_size: mini batch size
         :param epochs: total training epochs
-        :param noise_dim: noise dim for generation
         :param algorithm: 'vanilla or wgan'
         :param discriminator_training_loop: update generator once while updating discriminator more times
         :param discriminator_optimizer: tf.train.Optimizer
@@ -61,30 +60,27 @@ class Gan:
             dataset = dataset.batch(batch_size, drop_remainder=True)
             iterator = tf.data.Iterator.from_structure(dataset.output_types, dataset.output_shapes)
             iterator_initialize = iterator.make_initializer(dataset)
-        noise_for_training = tf.random_normal([batch_size, noise_dim], name='noise_for_training')
-        # discriminator loss
-        generated_images = self.generator(noise_for_training, training=False, name='training_discriminator')
-        discriminator_input = tf.concat([iterator.get_next(), generated_images], axis=0, name='discriminator_input')
-        discriminator_input = tf.stop_gradient(discriminator_input, name='stop_generator_gradient')
-        discriminator_output = self.discriminator(discriminator_input, training=True, name='training_discriminator')
-        discriminator_loss = Gan.__discriminator_loss(discriminator_output, batch_size, algorithm)
-        # generator loss
-        generated_images = self.generator(noise_for_training, training=True, name='training_generator')
-        discriminator_output = self.discriminator(generated_images, training=False, name='training_generator')
-        generator_loss = Gan.__generator_loss(discriminator_output, algorithm)
-        # save tensorboard files
-        summaries = Gan.__save_summaries(algorithm, discriminator_loss)
+        # compute loss
+        noise_for_training = tf.random_normal([batch_size, self.noise_dim], name='noise_for_training')
+        generated_images = self.generator(noise_for_training, training=True, name='generated_images')
+        disc_real = self.discriminator(iterator.get_next(), training=True, name='disc_real')
+        disc_fake = self.discriminator(generated_images, training=True, name='disc_fake')
+        discriminator_loss = Gan.__discriminator_loss(disc_real, disc_fake, algorithm)
+        generator_loss = Gan.__generator_loss(disc_fake, algorithm)
         # optimization
-        with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+        with tf.control_dependencies([op for op in tf.get_collection(tf.GraphKeys.UPDATE_OPS) if "discriminator" in op.name]):
             train_discriminator = discriminator_optimizer.minimize(discriminator_loss, var_list=self.discriminator.var_list, name='discriminator_optimizer')
+        with tf.control_dependencies([op for op in tf.get_collection(tf.GraphKeys.UPDATE_OPS) if "generator" in op.name]):
             train_generator = generator_optimizer.minimize(generator_loss, var_list=self.generator.var_list, name='generator_optimizer')
         # weight clipping in wgan
         if algorithm == 'wgan':
-            with tf.control_dependencies([train_discriminator]):
-                train_discriminator = Gan.__weight_clipping(self.discriminator.var_list)
-        # images will be generated after save_intervals epochs using the same noise
-        noise_for_generation = tf.get_variable(name='noise_for_generation', shape=[images_per_row ** 2, noise_dim],
-                                               initializer=tf.random_normal_initializer(), trainable=False)
+            clip = ([var.assign(tf.clip_by_value(var, -0.01, 0.01, name='clip/' + var.op.name), name='clip/' + var.op.name)
+                     for var in self.discriminator.var_list])
+            clip = tf.group(*clip)
+        else:
+            clip = None
+        # images will be generated after epochs using the same noise
+        noise_for_generation = tf.constant(np.random.normal(size=(images_per_row ** 2, self.noise_dim)).astype('float32'), name='noise_for_generation')
         generate_images_each_epoch = self.generator(noise_for_generation, training=False, name='inference_epoch')
         saver = tf.train.Saver(max_to_keep=3)
         with tf.Session(config=config) as sess:
@@ -98,28 +94,26 @@ class Gan:
                 latest_training_epochs = 0
                 iterations = 0  # training mini-batch iterations
                 sess.run(tf.global_variables_initializer())
-            writer = tf.summary.FileWriter(self.save_path, sess.graph)
             training_start_time = time.time()
             for epoch in range(epochs):  # training loop
                 epoch_start_time = time.time()
                 sess.run(iterator_initialize)
-                save_summary = 0
                 try:
                     while True:
-                        if algorithm == 'wgan' or algorithm == 'sn-wgan':  # training original wgan
-                            loop = 5 * discriminator_training_loop if iterations < 25 or (iterations + 1) % 500 == 0 else discriminator_training_loop
-                            for i in range(loop):  # wgan training trick: do more discriminator update occasionally or at the beginning
-                                if i == loop - 1:
-                                    _, save_summary = sess.run([train_discriminator, summaries])
-                                else:
-                                    sess.run([train_discriminator])
-                        else:
-                            _, save_summary = sess.run([train_discriminator, summaries])
-                        writer.add_summary(save_summary, iterations)
+                        save_discriminator_loss = 0
+                        for i in range(discriminator_training_loop):
+                            if i == discriminator_training_loop - 1:
+                                save_discriminator_loss, _ = sess.run([discriminator_loss, train_discriminator])
+                            else:
+                                sess.run([train_discriminator])
+                            if clip is not None:
+                                sess.run(clip)
+                        Gan.__save_summaries(algorithm, save_discriminator_loss)
+                        sess.run(train_generator)
                         iterations += 1
-                        sess.run([train_generator])
                 except tf.errors.OutOfRangeError:
                     pass
+                plot.flush(self.save_path)
                 print('Time taken for epoch {} is {} sec'.format(epoch + latest_training_epochs + 1, time.time() - epoch_start_time))
                 # saving generated images after each epoch
                 predictions = sess.run(generate_images_each_epoch)
@@ -127,29 +121,15 @@ class Gan:
                 if (epoch + latest_training_epochs + 1) % save_intervals == 0:
                     sess.run(tf.assign(saved_iterations, iterations))
                     saver.save(sess, os.path.join(self.check_points_path, 'check_points'), epoch + latest_training_epochs + 1)
-            writer.close()
             print('Time taken for training is {} min'.format((time.time() - training_start_time) / 60))
 
-    @staticmethod
-    def __save_summaries(algorithm, discriminator_loss):
-        with tf.name_scope('tensorboard_summary'):
-            if algorithm == 'vanilla':
-                tf.summary.scalar(name='JS_divergence', tensor=-0.5 * discriminator_loss + 1)
-            elif algorithm == 'wgan' or algorithm == 'sn-wgan':
-                tf.summary.scalar(name='Wasserstein_distance', tensor=-discriminator_loss)
-            else:
-                raise ValueError('unknown input training algorithm')
-            return tf.summary.merge_all()
-
-    @staticmethod
-    def generate_image(save_path, image_pages, images_per_row):
+    def generate_image(self, save_path, image_pages, images_per_row):
         """
         generate images using the latest saved check points and the images will be saved in 'save_path/images/'
         :param save_path: check points that have been saved in 'save_path/check_points/'
         :param image_pages: generated figure pages
         :param images_per_row: the number of generated images per row/column in a figure
         """
-        assert images_per_row <= 10, 'too much images in a figure'
         check_points_path = os.path.join(save_path, 'check_points')
         output_image_path = os.path.join(save_path, 'images')
         components.create_folder(output_image_path, False)
@@ -157,18 +137,28 @@ class Gan:
         assert latest_training_epochs_path is not None, "no check points found"
         saver = tf.train.import_meta_graph(latest_training_epochs_path + '.meta')
         latest_training_epochs = int(latest_training_epochs_path.split("-")[1])
-        shutil.copy(save_path + os.path.sep + "parameters.txt", output_image_path + os.path.sep + "parameters.txt")  # copy parameter text
         with tf.Session() as sess:
             saver.restore(sess, latest_training_epochs_path)
             for i in range(image_pages):
-                generated_images = sess.run('generator/output/during_inference:0')  # only generate 100 images each call
+                noise = np.random.normal(size=(images_per_row ** 2, self.noise_dim)).astype('float32')
+                generated_images = sess.run(self.generator(noise, training=False, name='inference'))
                 Gan.__save_images(output_image_path, generated_images, images_per_row, latest_training_epochs, i)
 
     @staticmethod
-    def __discriminator_loss(discriminator_output, batch_size, algorithm):
+    def __save_summaries(algorithm, discriminator_loss):
+        with tf.name_scope('summary'):
+            if algorithm == 'vanilla':
+                plot.plot('JS_divergence', -0.5 * discriminator_loss + 1)
+            elif algorithm == 'wgan' or algorithm == 'sn-wgan':
+                plot.plot('Wasserstein_distance', -discriminator_loss)
+            else:
+                raise ValueError('unknown input training algorithm')
+
+    @staticmethod
+    def __discriminator_loss(real_output, generated_output, algorithm):
         with tf.name_scope("discriminator_loss"):
-            real_output = tf.slice(discriminator_output, begin=[0, 0], size=[batch_size, -1], name='real_output')
-            generated_output = tf.slice(discriminator_output, begin=[batch_size, 0], size=[batch_size, -1], name='generated_output')
+            # real_output = tf.slice(discriminator_output, begin=[0, 0], size=[batch_size, -1], name='real_output')
+            # generated_output = tf.slice(discriminator_output, begin=[batch_size, 0], size=[batch_size, -1], name='generated_output')
             if algorithm == 'vanilla':
                 real_loss = tf.losses.sigmoid_cross_entropy(multi_class_labels=tf.ones_like(real_output), logits=real_output)
                 generated_loss = tf.losses.sigmoid_cross_entropy(multi_class_labels=tf.zeros_like(generated_output), logits=generated_output)
@@ -190,29 +180,17 @@ class Gan:
 
     @staticmethod
     def __save_images(output_path, predictions, images_per_row, epoch, index=0):
-        fig = plt.figure(figsize=(images_per_row, images_per_row))
-        fig.suptitle('epoch_{:04d}.png'.format(epoch))
-        if predictions.shape[1] == 1:
-            for i in range(images_per_row ** 2):
-                plt.subplot(images_per_row, images_per_row, i + 1)
-                plt.imshow(predictions[i][0], cmap='gray')
-                plt.axis('off')
+        [_, channel, height, width] = predictions.shape
+        if channel == 1:
+            images = np.around(predictions * 127.5 + 127.5).astype('uint8')
+            fig = np.zeros([height * images_per_row, width * images_per_row], dtype='uint8')
+            for i in range(images_per_row):
+                for j in range(images_per_row):
+                    fig[i * height:(i + 1) * height, j * width:(j + 1) * width] = images[i * images_per_row + j][0]
         else:
-            images = np.around(np.transpose(predictions, [0, 2, 3, 1]) * 127.5 + 127.5).astype(int)
-            for i in range(images_per_row ** 2):
-                plt.subplot(images_per_row, images_per_row, i + 1)
-                plt.imshow(images[i])
-                plt.axis('off')
-        plt.savefig(output_path + os.path.sep + 'epoch_{:04d}_{}.png'.format(epoch, index))
-        plt.close(fig)
-
-    @staticmethod
-    def __weight_clipping(var_list):
-        with tf.name_scope('discriminator/clipping'):
-            clipping_vars = []
-            for var in var_list:
-                if 'batch_normalization' not in var.name:
-                    clipping_vars.append(var)
-            clip = ([var.assign(tf.clip_by_value(var, -0.01, 0.01, name='clip/' + var.op.name), name='update/' + var.op.name) for var in clipping_vars])
-            clip = tf.tuple(clip, name='tuple')
-        return clip
+            fig = np.zeros([height * images_per_row, width * images_per_row, 3], dtype='uint8')
+            images = np.around(np.transpose(predictions, [0, 2, 3, 1]) * 127.5 + 127.5).astype('uint8')
+            for i in range(images_per_row):
+                for j in range(images_per_row):
+                    fig[i * height:(i + 1) * height, j * width:(j + 1) * width, :] = images[i * images_per_row + j]
+        imageio.imwrite(os.path.join(output_path, 'epoch_{:04d}_{}.png'.format(epoch, index)), fig)

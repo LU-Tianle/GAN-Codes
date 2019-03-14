@@ -5,6 +5,7 @@
 # @Author  : LU Tianle
 
 """
+inception-trans modules and nets
 """
 import functools
 
@@ -29,21 +30,13 @@ class Generator:
         batch_z = self.project(batch_z)
         batch_z = self.project_batch_norm(batch_z, training=training)
         batch_z = tf.nn.swish(batch_z, name=('generator/project/swish/' + name))
-        batch_z = tf.reshape(batch_z, shape=self.project_shape, name=('generator/project/reshape/' + name))
+        batch_z = tf.reshape(batch_z, shape=self.project_shape, name=('generator/reshape/' + name))
         batch_z = self.inception1(batch_z, training=training, name=name)
         batch_z = self.inception2(batch_z, training=training, name=name)
         batch_z = self.inception3(batch_z, training=training, name=name)
         batch_z = self.conv_trans(batch_z)
         batch_z = tf.nn.tanh(batch_z, name=('generator/output/during_' + name))
         return batch_z
-
-    def generate(self):
-        """
-        used for generating images, generate 100 images
-        :return: the Tensor if generated images is 'generator/output/during_inference:0'
-        """
-        batch_z = tf.random_normal([100, self.noise_dim], name='noise_for_inference')
-        self.__call__(batch_z, training=False, name='inference')
 
     @property
     def var_list(self):

@@ -33,7 +33,7 @@ class Dense:
     def __call__(self, batch):
         batch_shape = batch.get_shape().as_list()
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-            weights = tf.get_variable('weights', shape=[batch_shape[1], self.units], initializer=self.kernel_initializer, dtype=tf.float32)
+            weights = tf.get_variable('kernel', shape=[batch_shape[1], self.units], initializer=self.kernel_initializer, dtype=tf.float32)
             if self.use_bias:
                 bias = tf.get_variable('bias', shape=[self.units], initializer=self.bias_initializer, dtype=tf.float32)
             else:
