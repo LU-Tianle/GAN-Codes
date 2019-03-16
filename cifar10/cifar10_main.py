@@ -108,14 +108,14 @@ if __name__ == '__main__':
     #                                  conv_trans_layers=GEN_CONV_LAYERS, )
     discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
                                              spectral_norm=SPECTRAL_NORM)
-    gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH)
+    gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH, noise_dim=NOISE_DIM)
     # training
     components.create_folder(SAVE_PATH, CONTINUE_TRAINING)
     # components.save_parameters(first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS, conv_trans_layers=GEN_CONV_LAYERS,
     #                            first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
     #                            discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
     #                            dataset=DATASET, batch_size=BATCH_SIZE, noise_dim=NOISE_DIM, training_algorithm=TRAINING_ALGORITHM, save_path=SAVE_PATH)
-    gan.train(dataset=cifar10_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, noise_dim=NOISE_DIM, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
+    gan.train(dataset=cifar10_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
               discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,
               save_intervals=INTERVAL_EPOCHS, images_per_row=IMAGES_PER_ROW, continue_training=CONTINUE_TRAINING)
     # save parameters in save_path/parameter.txt"

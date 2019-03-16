@@ -8,6 +8,7 @@
 layers of fully connected and conv2d with Spectral Normalization
 """
 import tensorflow as tf
+import numpy as np
 
 
 class Dense:
@@ -39,8 +40,11 @@ class Dense:
             else:
                 bias = None
         if self.spectral_norm:
-            weights = spectral_normalization(weights, iteration=1, name=self.name)
-        batch = tf.matmul(batch, weights, name=self.name + '/matmul')
+            update_weights = weights.assign(spectral_normalization(weights, iteration=1, name=self.name))
+            with tf.control_dependencies([update_weights]):
+                batch = tf.matmul(batch, weights, name=self.name + '/matmul')
+        else:
+            batch = tf.matmul(batch, weights, name=self.name + '/matmul')
         if self.use_bias:
             batch = tf.add(batch, bias, name=self.name + '/add_bias')
         if self.activation is not None:
@@ -93,8 +97,12 @@ class Conv2D:
             else:
                 bias = None
         if self.spectral_norm:
-            kernel = spectral_normalization(kernel, iteration=1, name=self.name)
-        conv2d = tf.nn.conv2d(batch, filter=kernel, strides=strides, padding=self.padding, data_format=self.data_format, name=self.name + '/conv')
+            update_kernel = kernel.assign(spectral_normalization(kernel, iteration=1, name=self.name), name=self.name + '/update_kernel')
+            with tf.control_dependencies([update_kernel]):
+                kernel.assign(spectral_normalization(kernel, iteration=1, name=self.name))
+                conv2d = tf.nn.conv2d(batch, filter=kernel, strides=strides, padding=self.padding, data_format=self.data_format, name=self.name + '/conv')
+        else:
+            conv2d = tf.nn.conv2d(batch, filter=kernel, strides=strides, padding=self.padding, data_format=self.data_format, name=self.name + '/conv')
         if self.use_bias:
             conv2d = tf.nn.bias_add(conv2d, bias, data_format=self.data_format, name=self.name + '/add_bias')
         if self.activation is not None:
@@ -114,7 +122,7 @@ def spectral_normalization(weights, name, iteration=1):
     with tf.name_scope(name + '/spectral_normalization'):
         weights = tf.reshape(weights, [-1, weights_shape[-1]])
         with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
-            u = tf.get_variable("u", [1, weights_shape[-1]], initializer=tf.truncated_normal_initializer(stddev=0.02), trainable=False)
+            u = tf.get_variable("u", [1, weights_shape[-1]], initializer=tf.truncated_normal_initializer(), trainable=False)
         with tf.name_scope('power_iteration'):
             u_hat = u
             v_hat = None

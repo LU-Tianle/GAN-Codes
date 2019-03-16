@@ -62,7 +62,7 @@ class Gan:
             iterator_initialize = iterator.make_initializer(dataset)
         # compute loss
         noise_for_training = tf.random_normal([batch_size, self.noise_dim], name='noise_for_training')
-        generated_images = self.generator(noise_for_training, training=True, name='generated_images')
+        generated_images = self.generator(noise_for_training, training=True, name='training')
         disc_real = self.discriminator(iterator.get_next(), training=True, name='disc_real')
         disc_fake = self.discriminator(generated_images, training=True, name='disc_fake')
         discriminator_loss = Gan.__discriminator_loss(disc_real, disc_fake, algorithm)
@@ -72,16 +72,20 @@ class Gan:
             train_discriminator = discriminator_optimizer.minimize(discriminator_loss, var_list=self.discriminator.var_list, name='discriminator_optimizer')
         with tf.control_dependencies([op for op in tf.get_collection(tf.GraphKeys.UPDATE_OPS) if "generator" in op.name]):
             train_generator = generator_optimizer.minimize(generator_loss, var_list=self.generator.var_list, name='generator_optimizer')
-        # weight clipping in wgan
+        # weight clipping in wgan and sn-wgan
         if algorithm == 'wgan':
             clip = ([var.assign(tf.clip_by_value(var, -0.01, 0.01, name='clip/' + var.op.name), name='clip/' + var.op.name)
                      for var in self.discriminator.var_list])
+            clip = tf.group(*clip)
+        elif algorithm == 'sn-wgan':
+            clip = ([var.assign(tf.clip_by_value(var, -0.01, 0.01, name='clip/' + var.op.name), name='clip/' + var.op.name)
+                     for var in self.discriminator.var_list if 'gamma' in var.name])
             clip = tf.group(*clip)
         else:
             clip = None
         # images will be generated after epochs using the same noise
         noise_for_generation = tf.constant(np.random.normal(size=(images_per_row ** 2, self.noise_dim)).astype('float32'), name='noise_for_generation')
-        generate_images_each_epoch = self.generator(noise_for_generation, training=False, name='inference_epoch')
+        generate_images_each_epoch = self.generator(noise_for_generation, training=False, name='inference_each_epoch')
         saver = tf.train.Saver(max_to_keep=3)
         with tf.Session(config=config) as sess:
             if continue_training:  # continue training from the latest check point
@@ -94,6 +98,7 @@ class Gan:
                 latest_training_epochs = 0
                 iterations = 0  # training mini-batch iterations
                 sess.run(tf.global_variables_initializer())
+            writer = tf.summary.FileWriter(self.save_path, sess.graph)
             training_start_time = time.time()
             for epoch in range(epochs):  # training loop
                 epoch_start_time = time.time()
@@ -122,6 +127,7 @@ class Gan:
                     sess.run(tf.assign(saved_iterations, iterations))
                     saver.save(sess, os.path.join(self.check_points_path, 'check_points'), epoch + latest_training_epochs + 1)
             print('Time taken for training is {} min'.format((time.time() - training_start_time) / 60))
+            writer.close()
 
     def generate_image(self, save_path, image_pages, images_per_row):
         """

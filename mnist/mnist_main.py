@@ -35,17 +35,17 @@ EPOCHS = 150
 NOISE_DIM = 128
 
 # vanilla gan training hyper-parameters
-DISCRIMINATOR_TRAINING_LOOP = 1
-GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5, name='generator_optimizer_adam')
-DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5, name='discriminator_optimizer_adam')
-TRAINING_ALGORITHM = "vanilla"
+# DISCRIMINATOR_TRAINING_LOOP = 1
+# GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5, name='generator_optimizer_adam')
+# DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5, name='discriminator_optimizer_adam')
+# TRAINING_ALGORITHM = "vanilla"
 
 # wgan training hyper-parameters
-# DISCRIMINATOR_TRAINING_LOOP = 5
-# GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='generator_optimizer_RMSProp')
-# DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='discriminator_optimizer_RMSProp')
+DISCRIMINATOR_TRAINING_LOOP = 5
+GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='generator_optimizer_RMSProp')
+DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='discriminator_optimizer_RMSProp')
 # TRAINING_ALGORITHM = "wgan"
-# TRAINING_ALGORITHM = "sn-wgan"
+TRAINING_ALGORITHM = "sn-wgan"
 
 # other parameters: details in gan.py
 SAVE_PATH = os.getcwd() + os.path.sep + 'wgan'
@@ -108,11 +108,10 @@ if __name__ == '__main__':
     # show_mnist_pictures(10)
     # construct the networks and training algorithm
     image_shape = mnist_dataset.output_shapes.as_list()
-    print(image_shape)
     generator = dcgan_nets.Generator(image_shape=image_shape, noise_dim=NOISE_DIM, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS,
-                                     conv_trans_layers=GEN_CONV_LAYERS, )
+                                     conv_trans_layers=GEN_CONV_LAYERS)
     spectral_norm = True if TRAINING_ALGORITHM == 'sn-wgan' else False
-    # generator = inception_trans_nets.Generator(image_shape=image_shape, noise_dim=NOISE_DIM, )
+    # generator = inception_trans_nets.Generator(image_shape=image_shape, noise_dim=NOISE_DIM)
     discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS, spectral_norm=spectral_norm)
     gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH, noise_dim=NOISE_DIM)
     components.create_folder(SAVE_PATH, CONTINUE_TRAINING)

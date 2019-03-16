@@ -68,7 +68,7 @@ class Generator:
             batch_z = batch_norm(batch_z, training=training)
             batch_z = tf.nn.relu(batch_z, name='%sconv_5x5_activation/%s' % (layer_name, name))
             if batch_z.shape.as_list()[2:] == [6, 6]:  # MNIST
-                batch_z = tf.pad(batch_z, paddings=[[0, 0], [0, 0], [0, 1], [0, 1]], mode='REFLECT', name='padding_tensor_for_MNIST')
+                batch_z = tf.pad(batch_z, paddings=[[0, 0], [0, 0], [0, 1], [0, 1]], mode='REFLECT', name='generator/padding')
         batch_z = self.output_layer(batch_z)
         batch_z = tf.nn.tanh(batch_z, name=('generator/output_layer/tanh/during_' + name))
         return batch_z
