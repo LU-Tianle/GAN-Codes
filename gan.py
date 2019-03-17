@@ -145,8 +145,6 @@ class Gan:
         latest_checkpoint = tf.train.latest_checkpoint(check_points_path)
         assert latest_checkpoint is not None, "no check points found"
         saver = tf.train.import_meta_graph(latest_checkpoint + '.meta')
-        for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator'):
-            print(x.name)
         with tf.Session() as sess:
             saver.restore(sess, latest_checkpoint)
             iterations = sess.run('saved_iterations:0')
