@@ -136,6 +136,6 @@ if __name__ == '__main__':
     # localhost:6006
     # generate images using the latest saved check points and the images will be saved in 'save_path/images/'
     elif TRAINING_OR_INFERENCE == 'inference':
-        gan.generate_image(save_path=SAVE_PATH, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)
+        Gan.generate_image(save_path=SAVE_PATH, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)
     else:
         raise ValueError("training or inference?")

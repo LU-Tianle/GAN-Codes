@@ -120,6 +120,6 @@ if __name__ == '__main__':
                   discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,
                   images_per_row=IMAGES_PER_ROW, continue_training=CONTINUE_TRAINING)
     elif TRAINING_OR_INFERENCE == 'inference':
-        gan.generate_image(save_path=SAVE_PATH, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)
+        Gan.generate_image(save_path=SAVE_PATH, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)
     else:
-        raise ValueError("training or inference ?")
+        raise ValueError("training or inference?")

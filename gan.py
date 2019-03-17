@@ -32,8 +32,7 @@ class Gan:
         self.save_path = save_path
         self.check_points_path = os.path.join(save_path, 'check_points')
         self.output_image_path = os.path.join(save_path, 'images_during_training')
-        noise = tf.random_normal(shape=(200, self.noise_dim), name='noise_for_inference')
-        generated_images = self.generator(noise, training=False, name='inference')
+        self.generator.generate()
 
     def train(self, dataset, batch_size, epochs, algorithm,
               discriminator_training_loop, discriminator_optimizer, generator_optimizer,
@@ -131,13 +130,15 @@ class Gan:
             print('Time taken for training is {} min'.format((time.time() - training_start_time) / 60))
             writer.close()
 
-    def generate_image(self, save_path, image_pages, images_per_row):
+    @staticmethod
+    def generate_image(save_path, image_pages, images_per_row):
         """
         generate images using the latest saved check points and the images will be saved in 'save_path/images/'
         :param save_path: check points that have been saved in 'save_path/check_points/'
         :param image_pages: generated figure pages
         :param images_per_row: the number of generated images per row/column in a figure
         """
+        assert images_per_row <= 15, 'too much images in a figure'
         check_points_path = os.path.join(save_path, 'check_points')
         output_image_path = os.path.join(save_path, 'images')
         components.create_folder(output_image_path, False)
@@ -145,12 +146,13 @@ class Gan:
         assert latest_checkpoint is not None, "no check points found"
         saver = tf.train.import_meta_graph(latest_checkpoint + '.meta')
         for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator'):
-            print(x.op.name)
+            print(x.name)
         with tf.Session() as sess:
             saver.restore(sess, latest_checkpoint)
             iterations = sess.run('saved_iterations:0')
             for i in range(image_pages):
-                generated_images = sess.run('inference:0')
+                print(sess.run('noise_for_inference:0'))
+                generated_images = sess.run('generator/output_layer/tanh/during_inference:0')  # only generate 225 images each call
                 Gan.__save_images(output_image_path, generated_images, images_per_row, iterations, i)
 
     @staticmethod
@@ -200,4 +202,4 @@ class Gan:
             for i in range(images_per_row):
                 for j in range(images_per_row):
                     fig[i * height:(i + 1) * height, j * width:(j + 1) * width, :] = images[i * images_per_row + j]
-        imageio.imwrite(os.path.join(output_path, 'generator iteration: {}_{}.png'.format(iteration, index)), fig)
+        imageio.imwrite(os.path.join(output_path, 'generator_iteration_{}_{}.png'.format(iteration, index)), fig)

@@ -55,8 +55,16 @@ class Generator:
         if self.inception4 is not None:
             batch_z = self.inception4(batch_z, training=training, name=name)
         batch_z = self.conv_trans(batch_z)
-        batch_z = tf.nn.tanh(batch_z, name=('generator/output/during_' + name))
+        batch_z = tf.nn.tanh(batch_z, name=('generator/output_layer/tanh/during_' + name))
         return batch_z
+
+    def generate(self):
+        """
+        used for generating images, generate 100 images
+        :return: the Tensor if generated images is 'generator/output_layer/tanh/during_inference:0'
+        """
+        batch_z = tf.random_normal([100, self.noise_dim], name='noise_for_inference')
+        self.__call__(batch_z, training=False, name='inference')
 
     @property
     def var_list(self):

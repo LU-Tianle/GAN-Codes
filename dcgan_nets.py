@@ -73,6 +73,14 @@ class Generator:
         batch_z = tf.nn.tanh(batch_z, name=('generator/output_layer/tanh/during_' + name))
         return batch_z
 
+    def generate(self):
+        """
+        used for generating images, generate 100 images
+        :return: the Tensor if generated images is 'generator/output_layer/tanh/during_inference:0'
+        """
+        batch_z = tf.random_normal([225, self.noise_dim], name='noise_for_inference')
+        self.__call__(batch_z, training=False, name='inference')
+
     @property
     def var_list(self):
         return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
