@@ -1,21 +1,16 @@
 # -*- encoding: utf-8 -*-
-# @Software: PyCharm 
-# @File    : mnist_main.py
-# @Time    : 2018/11/23 21:09
+# @Software: PyCharm
+# @File    : celeba_main.py
+# @Time    : 2019/1/23 11:41
 # @Author  : LU Tianle
 
 """
-the main function of training and generating cifar-10 images by gan
-The CIFAR-10 dataset consists of 60000 32x32 colour images in 10 classes, with 6000 images per class.
-There are 50000 training images and 10000 test images.
 """
 import os
-import random
 
 import numpy as np
 import tensorflow as tf
 from PIL import Image
-import time
 
 import components
 import dcgan_nets
@@ -71,23 +66,29 @@ TRAINING_OR_INFERENCE = 'training'  # 'training' or 'inference'
 # ==============================================================================
 
 
-def get_cifar10_dataset(tfrecord_dir=os.path.join('./data', 'cifar10.tfrecord')):
+def celeba2tfrecord(img_dir, save_dir, size):
+    assert not os.path.exists(os.path.join(save_dir, 'celeba_%d.tfrecord' % size)), 'tfrecord file already exist'
+    components.images2tfrecord(img_dir, save_dir, name='celeba', size=size)
+
+
+def get_celeba_dataset(tfrecord_dir):
     return tf.data.TFRecordDataset(tfrecord_dir, compression_type="ZLIB") \
         .map(components.parse_example) \
-        .map(lambda img: tf.reshape(img, [3, 32, 32])) \
-        .shuffle(60000)
+        .map(lambda img: tf.reshape(img, [3, 64, 64])) \
+        .shuffle(30000)
 
 
-def show_cifar10_pictures_from_tfrecord(images_per_row):
-    dataset_path = os.path.join('./data', 'cifar10.tfrecord')
+def show_celeba_from_tfrecord(images_per_row):
+    dataset_path = os.path.join('./data', 'celeba_64.tfrecord')
     assert os.path.exists(dataset_path), 'tfrecord file is not exist'
-    dataset = get_cifar10_dataset(dataset_path).batch(images_per_row ** 2)
-    iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
+    dataset = get_celeba_dataset(dataset_path).batch(images_per_row ** 2)
+    iterator = tf.data.Iterator.from_structure(dataset.output_types, dataset.output_shapes)
+    iterator_initialize = iterator.make_initializer(dataset)
     [_, _, height, width] = dataset.output_shapes
     fig = np.zeros([height * images_per_row, width * images_per_row, 3]).astype('uint8')
     with tf.Session() as sess:
-        images = sess.run(next_element)
+        sess.run(iterator_initialize)
+        images = sess.run(iterator.get_next())
         images = np.around(np.transpose(images, [0, 2, 3, 1]) * 127.5 + 127.5).astype('uint8')
     for i in range(images_per_row):
         for j in range(images_per_row):
@@ -95,39 +96,13 @@ def show_cifar10_pictures_from_tfrecord(images_per_row):
     Image.fromarray(fig).show()
 
 
-def cifar102tfrecord(save_dir):
-    """
-    :param save_dir:
-    """
-    assert not os.path.exists(os.path.join(save_dir, 'cifar10.tfrecord')), 'tfrecord file already exist'
-    (train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.cifar10.load_data()
-    train_images = np.vstack((train_images, test_images)).astype('float32')  # use test set to training
-    train_images = ((train_images - 127.5) / 127.5)  # normalize the images to the range of [-1, 1], the original range is {0, 1, ... , 255}
-    train_images = np.transpose(train_images, [0, 3, 1, 2])  # channel last to channel first
-    writer_options = tf.python_io.TFRecordOptions(tf.python_io.TFRecordCompressionType.ZLIB)
-    writer = tf.python_io.TFRecordWriter(os.path.join(save_dir, 'cifar10.tfrecord'), writer_options)
-    start_time = time.time()
-    for i in range(len(train_images)):
-        feature = tf.train.Features(feature={'img_bytes': __bytes_feature(train_images[i].tobytes())})
-        example = tf.train.Example(features=feature)
-        writer.write(example.SerializeToString())
-        if (i + 1) % 1000 == 0:
-            print('Time taken for {} images is {} min'.format((i + 1), (time.time() - start_time) / 60))
-    print('images2tfrecord complete!')
-    writer.close()
-
-
-def __bytes_feature(value):
-    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
-
-
 if __name__ == '__main__':
-    # cifar102tfrecord(save_dir=os.path.join('./', 'data'))  # convert images to a tfrecord file
-    # show_cifar10_pictures_from_tfrecord(10)
+    # celeba2tfrecord(r'E:\tmp\img_align_celeba', save_dir=os.path.join('./', 'data'), size=64)  # convert images to a tfrecord file
+    # show_celeba_from_tfrecord(10)
 
     # construct the networks and training algorithm
-    cifar10_dataset = get_cifar10_dataset()
-    image_shape = cifar10_dataset.output_shapes.as_list()
+    celeba_dataset = get_celeba_dataset(os.path.join('./data', 'celeba_64.tfrecord'))
+    image_shape = celeba_dataset.output_shapes.as_list()
     if GENERATOR_TYPE == 'DCGAN':
         generator = dcgan_nets.Generator(image_shape=image_shape, noise_dim=NOISE_DIM, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS,
                                          conv_trans_layers=GEN_CONV_LAYERS)  # DCGAN Generator
@@ -141,12 +116,9 @@ if __name__ == '__main__':
 
     # training or inference
     if TRAINING_OR_INFERENCE == 'training':
-        gan.train(dataset=cifar10_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
+        gan.train(dataset=celeba_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
                   discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,
                   images_per_row=IMAGES_PER_ROW, continue_training=CONTINUE_TRAINING)
-    # tensorboard --logdir=E:\workspace\GAN\cifar10\saved_data_1
-    # localhost:6006
-    # generate images using the latest saved check points and the images will be saved in 'save_path/images/'
     elif TRAINING_OR_INFERENCE == 'inference':
         gan.generate_image(save_path=SAVE_PATH, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)
     else:

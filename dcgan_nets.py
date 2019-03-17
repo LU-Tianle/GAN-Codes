@@ -54,7 +54,7 @@ class Generator:
         # output layer whose output shape is [batch_size, channel, height, width], no batch normalization
         self.output_layer = tf.layers.Conv2DTranspose(filters=self.channel, kernel_size=(5, 5), strides=(2, 2), padding='same', data_format="channels_first",
                                                       kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
-                                                      name='generator/conv_trans_%d/conv_trans' % conv_trans_layers)
+                                                      name='generator/output_layer/conv_trans')
 
     def __call__(self, batch_z, training, name):
         """generate images by random noise(batch_z)

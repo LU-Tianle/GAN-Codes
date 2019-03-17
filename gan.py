@@ -32,10 +32,12 @@ class Gan:
         self.save_path = save_path
         self.check_points_path = os.path.join(save_path, 'check_points')
         self.output_image_path = os.path.join(save_path, 'images_during_training')
+        noise = tf.random_normal(shape=(200, self.noise_dim), name='noise_for_inference')
+        generated_images = self.generator(noise, training=False, name='inference')
 
     def train(self, dataset, batch_size, epochs, algorithm,
               discriminator_training_loop, discriminator_optimizer, generator_optimizer,
-              save_intervals, images_per_row, continue_training=False):
+              images_per_row, continue_training=False):
         """
         start training and save models
         :param dataset: training dataset
@@ -45,12 +47,12 @@ class Gan:
         :param discriminator_training_loop: update generator once while updating discriminator more times
         :param discriminator_optimizer: tf.train.Optimizer
         :param generator_optimizer: tf.train.Optimizer
-        :param save_intervals: save check points every interval epochs in the self.save_path
         :param images_per_row: the number of generated images per row/column in a figure every epochs
         :param continue_training: continue training using the latest check points in the self.save_path
         """
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
+        components.create_folder(self.save_path, continue_training)
         components.create_folder(self.check_points_path, continue_training)
         components.create_folder(self.output_image_path, continue_training)
         # saved training iterations
@@ -96,7 +98,7 @@ class Gan:
                 iterations = sess.run('saved_iterations:0')  # load training iterations
             else:  # start a initial training
                 latest_training_epochs = 0
-                iterations = 0  # training mini-batch iterations
+                iterations = 1  # training mini-batch iterations
                 sess.run(tf.global_variables_initializer())
             writer = tf.summary.FileWriter(self.save_path, sess.graph)
             training_start_time = time.time()
@@ -122,10 +124,10 @@ class Gan:
                 print('Time taken for epoch {} is {} sec'.format(epoch + latest_training_epochs + 1, time.time() - epoch_start_time))
                 # saving generated images after each epoch
                 predictions = sess.run(generate_images_each_epoch)
-                Gan.__save_images(self.output_image_path, predictions, images_per_row, epoch + latest_training_epochs + 1)
-                if (epoch + latest_training_epochs + 1) % save_intervals == 0:
-                    sess.run(tf.assign(saved_iterations, iterations))
-                    saver.save(sess, os.path.join(self.check_points_path, 'check_points'), epoch + latest_training_epochs + 1)
+                Gan.__save_images(self.output_image_path, predictions, images_per_row, iterations - 1)
+                if (epoch + 1) % 5 == 0:
+                    sess.run(tf.assign(saved_iterations, iterations - 1))
+                    saver.save(sess, os.path.join(self.check_points_path, 'check_points'), iterations - 1)
             print('Time taken for training is {} min'.format((time.time() - training_start_time) / 60))
             writer.close()
 
@@ -139,16 +141,17 @@ class Gan:
         check_points_path = os.path.join(save_path, 'check_points')
         output_image_path = os.path.join(save_path, 'images')
         components.create_folder(output_image_path, False)
-        latest_training_epochs_path = tf.train.latest_checkpoint(check_points_path)
-        assert latest_training_epochs_path is not None, "no check points found"
-        saver = tf.train.import_meta_graph(latest_training_epochs_path + '.meta')
-        latest_training_epochs = int(latest_training_epochs_path.split("-")[1])
+        latest_checkpoint = tf.train.latest_checkpoint(check_points_path)
+        assert latest_checkpoint is not None, "no check points found"
+        saver = tf.train.import_meta_graph(latest_checkpoint + '.meta')
+        for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator'):
+            print(x.op.name)
         with tf.Session() as sess:
-            saver.restore(sess, latest_training_epochs_path)
+            saver.restore(sess, latest_checkpoint)
+            iterations = sess.run('saved_iterations:0')
             for i in range(image_pages):
-                noise = np.random.normal(size=(images_per_row ** 2, self.noise_dim)).astype('float32')
-                generated_images = sess.run(self.generator(noise, training=False, name='inference'))
-                Gan.__save_images(output_image_path, generated_images, images_per_row, latest_training_epochs, i)
+                generated_images = sess.run('inference:0')
+                Gan.__save_images(output_image_path, generated_images, images_per_row, iterations, i)
 
     @staticmethod
     def __save_summaries(algorithm, discriminator_loss):
@@ -163,8 +166,6 @@ class Gan:
     @staticmethod
     def __discriminator_loss(real_output, generated_output, algorithm):
         with tf.name_scope("discriminator_loss"):
-            # real_output = tf.slice(discriminator_output, begin=[0, 0], size=[batch_size, -1], name='real_output')
-            # generated_output = tf.slice(discriminator_output, begin=[batch_size, 0], size=[batch_size, -1], name='generated_output')
             if algorithm == 'vanilla':
                 real_loss = tf.losses.sigmoid_cross_entropy(multi_class_labels=tf.ones_like(real_output), logits=real_output)
                 generated_loss = tf.losses.sigmoid_cross_entropy(multi_class_labels=tf.zeros_like(generated_output), logits=generated_output)
@@ -185,7 +186,7 @@ class Gan:
                 raise ValueError('unknown input training algorithm')
 
     @staticmethod
-    def __save_images(output_path, predictions, images_per_row, epoch, index=0):
+    def __save_images(output_path, predictions, images_per_row, iteration, index=0):
         [_, channel, height, width] = predictions.shape
         if channel == 1:
             images = np.around(predictions * 127.5 + 127.5).astype('uint8')
@@ -199,4 +200,4 @@ class Gan:
             for i in range(images_per_row):
                 for j in range(images_per_row):
                     fig[i * height:(i + 1) * height, j * width:(j + 1) * width, :] = images[i * images_per_row + j]
-        imageio.imwrite(os.path.join(output_path, 'epoch_{:04d}_{}.png'.format(epoch, index)), fig)
+        imageio.imwrite(os.path.join(output_path, 'generator iteration: {}_{}.png'.format(iteration, index)), fig)

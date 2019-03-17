@@ -8,7 +8,6 @@
 layers of fully connected and conv2d with Spectral Normalization
 """
 import tensorflow as tf
-import numpy as np
 
 
 class Dense:

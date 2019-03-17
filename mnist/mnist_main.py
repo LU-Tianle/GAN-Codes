@@ -14,7 +14,6 @@ import random
 import numpy as np
 import tensorflow as tf
 
-import components
 import dcgan_nets
 import inception_trans_nets
 from gan import Gan
@@ -24,14 +23,20 @@ from PIL import Image
 # ==============================================================================
 DATASET = 'MNIST'  # 'MNIST' or 'Fashion MNIST'
 # networks hyper parameters: details in dcgan_nets.py
+
+# DCGAN Generator parameters:
 GEN_CONV_FIRST_LAYER_FILTERS = 128
 GEN_CONV_LAYERS = 3
+
+# DCGAN Discriminator parameters:
 DISC_FIRST_LAYER_FILTERS = 64
 DISC_CONV_LAYERS = 3
 
+GENERATOR_TYPE = 'DCGAN'  # 'DCGAN' or 'Inception-trans Nets'
+
 # hyper-parameters:
 BATCH_SIZE = 50
-EPOCHS = 150
+EPOCHS = 300
 NOISE_DIM = 128
 
 # vanilla gan training hyper-parameters
@@ -40,7 +45,7 @@ NOISE_DIM = 128
 # DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5, name='discriminator_optimizer_adam')
 # TRAINING_ALGORITHM = "vanilla"
 
-# wgan training hyper-parameters
+# wgan and sn-wgan training hyper-parameters
 DISCRIMINATOR_TRAINING_LOOP = 5
 GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='generator_optimizer_RMSProp')
 DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='discriminator_optimizer_RMSProp')
@@ -50,13 +55,15 @@ TRAINING_ALGORITHM = "sn-wgan"
 # other parameters: details in gan.py
 SAVE_PATH = os.getcwd() + os.path.sep + 'wgan'
 CONTINUE_TRAINING = False
-INTERVAL_EPOCHS = 5
 IMAGES_PER_ROW = 10
 
 # generate images by the saved check points:
 OUTPUT_IMAGE_PATH = os.getcwd() + os.path.sep + 'generated_images'
 IMAGE_PAGES = 5
 IMAGES_PER_ROW_FOR_GENERATING = 10
+
+# training or inference
+TRAINING_OR_INFERENCE = 'inference'  # 'training' or 'inference'
 
 
 # ==============================================================================
@@ -104,22 +111,31 @@ def __get_mnist_data():
 
 
 if __name__ == '__main__':
-    mnist_dataset = get_mnist_dataset(use_testset=True)
     # show_mnist_pictures(10)
+
     # construct the networks and training algorithm
+    mnist_dataset = get_mnist_dataset(use_testset=True)
     image_shape = mnist_dataset.output_shapes.as_list()
-    generator = dcgan_nets.Generator(image_shape=image_shape, noise_dim=NOISE_DIM, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS,
-                                     conv_trans_layers=GEN_CONV_LAYERS)
+    if GENERATOR_TYPE == 'DCGAN':
+        generator = dcgan_nets.Generator(image_shape=image_shape, noise_dim=NOISE_DIM, first_conv_trans_layer_filters=GEN_CONV_FIRST_LAYER_FILTERS,
+                                         conv_trans_layers=GEN_CONV_LAYERS)  # DCGAN Generator
+    elif GENERATOR_TYPE == 'Inception-trans Nets':
+        generator = inception_trans_nets.Generator(image_shape=image_shape, noise_dim=NOISE_DIM)  # Inception-trans Generator
+    else:
+        raise ValueError("Unknown Generator type")
     spectral_norm = True if TRAINING_ALGORITHM == 'sn-wgan' else False
-    # generator = inception_trans_nets.Generator(image_shape=image_shape, noise_dim=NOISE_DIM)
     discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS, spectral_norm=spectral_norm)
     gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH, noise_dim=NOISE_DIM)
-    components.create_folder(SAVE_PATH, CONTINUE_TRAINING)
-    # training
-    gan.train(dataset=mnist_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
-              discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,
-              save_intervals=INTERVAL_EPOCHS, images_per_row=IMAGES_PER_ROW, continue_training=CONTINUE_TRAINING)
+
+    # training or inference
+    if TRAINING_OR_INFERENCE == 'training':
+        gan.train(dataset=mnist_dataset, batch_size=BATCH_SIZE, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP, epochs=EPOCHS,
+                  discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,
+                  images_per_row=IMAGES_PER_ROW, continue_training=CONTINUE_TRAINING)
     # tensorboard --logdir=E:\workspace\GAN\mnist\saved_data_1
     # localhost:6006
     # generate images using the latest saved check points and the images will be saved in 'save_path/images/'
-    # Gan.generate_image(save_path=SAVE_PATH, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)
+    elif TRAINING_OR_INFERENCE == 'inference':
+        gan.generate_image(save_path=SAVE_PATH, image_pages=IMAGE_PAGES, images_per_row=IMAGES_PER_ROW_FOR_GENERATING)
+    else:
+        raise ValueError("training or inference?")

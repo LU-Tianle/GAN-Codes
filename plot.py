@@ -26,7 +26,7 @@ def flush(path):
         y_vals = [_since_beginning[name][x] for x in x_vals]
         plt.figure(figsize=(11.5, 4.5))
         plt.plot(x_vals, y_vals)
-        plt.xlabel('iteration')
+        plt.xlabel('Generator iterations')
         plt.ylabel(name)
         plt.savefig(os.path.join(path, name + '.jpg'))
         plt.close('all')

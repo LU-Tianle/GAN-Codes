@@ -15,11 +15,11 @@ import tensorflow as tf
 class Generator:
     def __init__(self, image_shape, noise_dim):
         [self.channel, self.height, self.width] = image_shape
-        if self.height == self.width == 28:
+        if self.height == 28 and self.width == 28:
             self.project_shape = [-1, 256, 3, 3]
-        elif self.height == self.width == 32:
+        elif self.height == 32 and self.width == 32:
             self.project_shape = [-1, 256, 4, 4]
-        elif self.height == self.width == 64:
+        elif self.height == 64 and self.width == 64:
             self.project_shape = [-1, 512, 4, 4]
         else:
             raise ValueError("image shape incompatible")
@@ -27,14 +27,20 @@ class Generator:
         self.project = tf.layers.Dense(units=functools.reduce(lambda x, y: abs(x) * y, self.project_shape), use_bias=False,
                                        kernel_initializer=tf.truncated_normal_initializer(stddev=0.02), name="generator/project/project")
         self.project_bn = tf.layers.BatchNormalization(epsilon=1e-5, momentum=0.9, name='generator/project/bn')
-        self.inception1 = InceptionTrans1(ni_filter=[64], conv_trans_3x3_filters=[128, 64])  # 256 -> 128
-        self.inception2 = InceptionTrans2(ni_filter=[16], conv_trans_3x3_filters=[64, 16], conv_trans_5x5_filters=[128, 128, 32])  # 128 -> 64
-        self.inception3 = InceptionTrans3(ni_filter=[8], conv_trans_3x3_filters=[32, 8],
-                                          conv_trans_5x5_filters=[64, 64, 8], conv_trans_7x7_filters=[64, 64, 8])  # 64 -> 32
-        if self.height == self.width == 64:
-            self.inception4 = InceptionTrans4(ni_filter=[8], conv_trans_5x5_filters=[64, 64, 8], conv_trans_7x7_filters=[64, 64, 16])
-        else:
+        if (self.height == 28 and self.width == 28) or (self.height == 32 and self.width == 32):
+            self.inception1 = InceptionTrans1(ni_filter=[64], conv_trans_3x3_filters=[128, 64])  # 256 -> 128
+            self.inception2 = InceptionTrans2(ni_filter=[16], conv_trans_3x3_filters=[64, 16], conv_trans_5x5_filters=[128, 128, 32])  # 128 -> 64
+            self.inception3 = InceptionTrans3(ni_filter=[8], conv_trans_3x3_filters=[32, 8],
+                                              conv_trans_5x5_filters=[64, 64, 8], conv_trans_7x7_filters=[64, 64, 8])  # 64 -> 32
             self.inception4 = None
+        elif self.height == 64 and self.width == 64:
+            self.inception1 = InceptionTrans1(ni_filter=[128], conv_trans_3x3_filters=[256, 128])  # 512 -> 256
+            self.inception2 = InceptionTrans2(ni_filter=[32], conv_trans_3x3_filters=[128, 32], conv_trans_5x5_filters=[256, 256, 64])  # 256 -> 128
+            self.inception3 = InceptionTrans3(ni_filter=[16], conv_trans_3x3_filters=[64, 16],
+                                              conv_trans_5x5_filters=[128, 128, 16], conv_trans_7x7_filters=[128, 128, 16])  # 128 -> 64
+            self.inception4 = InceptionTrans4(ni_filter=[8], conv_trans_5x5_filters=[64, 64, 8], conv_trans_7x7_filters=[64, 64, 16])  # 64 -> 32
+        else:
+            raise ValueError("image shape incompatible")
         self.conv_trans = tf.layers.Conv2DTranspose(filters=self.channel, kernel_size=(5, 5), padding='same', data_format="channels_first",
                                                     kernel_initializer=tf.random_normal_initializer(stddev=0.02), name='generator/merge_channels/conv')
 
@@ -124,11 +130,11 @@ class InceptionTrans2:
         self.branch2_conv_1x1_bn = tf.layers.BatchNormalization(axis=1, epsilon=1e-5, momentum=0.9, name=name + 'conv_1x1_bn')
         # branch3, conv_trans_5x5 block: (conv_trans_3x3-batch normalization-relu)*2 + conv_1x1-batch normalization-relu
         name = 'generator/inception_trans2/conv_tans_5x5_branch/'
-        self.branch3_conv_tans1 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[0], kernel_size=(3, 3), strides=(1, 2), padding='same',
+        self.branch3_conv_tans1 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[0], kernel_size=(3, 3), strides=(2, 2), padding='same',
                                                             use_bias=False, data_format="channels_first", name=name + 'conv_tans_3x3_1',
                                                             kernel_initializer=tf.random_normal_initializer(stddev=0.02))
         self.branch3_conv_tans1_bn = tf.layers.BatchNormalization(axis=1, epsilon=1e-5, momentum=0.9, name=name + 'conv_tans_3x3_1_bn')
-        self.branch3_conv_tans2 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[1], kernel_size=(3, 3), strides=(2, 1), padding='same',
+        self.branch3_conv_tans2 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[1], kernel_size=(3, 3), strides=(1, 1), padding='same',
                                                             use_bias=False, data_format="channels_first", name=name + 'conv_tans_3x3_2',
                                                             kernel_initializer=tf.random_normal_initializer(stddev=0.02))
         self.branch3_conv_tan2_bn = tf.layers.BatchNormalization(axis=1, epsilon=1e-5, momentum=0.9, name=name + 'conv_tans_3x3_2_bn')
@@ -190,11 +196,11 @@ class InceptionTrans3:
         self.branch2_conv_1x1_bn = tf.layers.BatchNormalization(axis=1, epsilon=1e-5, momentum=0.9, name=name + 'conv_1x1_bn')
         # branch3, conv_trans_5x5 block: (conv_trans_3x3-batch normalization-relu)*2 + conv_1x1-batch normalization-relu
         name = 'generator/inception_trans3/conv_tans_5x5_branch/'
-        self.branch3_conv_tans1 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[0], kernel_size=(3, 3), strides=(1, 2), padding='same',
+        self.branch3_conv_tans1 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[0], kernel_size=(3, 3), strides=(2, 2), padding='same',
                                                             use_bias=False, data_format="channels_first", name=name + 'conv_tans_3x3_1',
                                                             kernel_initializer=tf.random_normal_initializer(stddev=0.02))
         self.branch3_conv_tans1_bn = tf.layers.BatchNormalization(axis=1, epsilon=1e-5, momentum=0.9, name=name + 'conv_tans_3x3_1_bn')
-        self.branch3_conv_tans2 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[1], kernel_size=(3, 3), strides=(2, 1), padding='same',
+        self.branch3_conv_tans2 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[1], kernel_size=(3, 3), strides=(1, 1), padding='same',
                                                             use_bias=False, data_format="channels_first", name=name + 'conv_tans_3x3_2',
                                                             kernel_initializer=tf.random_normal_initializer(stddev=0.02))
         self.branch3_conv_tan2_bn = tf.layers.BatchNormalization(axis=1, epsilon=1e-5, momentum=0.9, name=name + 'conv_tans_3x3_2_bn')
@@ -269,11 +275,11 @@ class InceptionTrans4:
         self.branch1_batch_norm = tf.layers.BatchNormalization(axis=1, epsilon=1e-5, momentum=0.9, name=name + 'conv_1x1_bn')
         # branch3, conv_trans_5x5 block: (conv_trans_3x3-batch normalization-relu)*2 + conv_1x1-batch normalization-relu
         name = 'generator/inception_trans4/conv_tans_5x5_branch/'
-        self.branch3_conv_tans1 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[0], kernel_size=(3, 3), strides=(1, 2), padding='same',
+        self.branch3_conv_tans1 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[0], kernel_size=(3, 3), strides=(2, 2), padding='same',
                                                             use_bias=False, data_format="channels_first", name=name + 'conv_tans_3x3_1',
                                                             kernel_initializer=tf.random_normal_initializer(stddev=0.02))
         self.branch3_conv_tans1_bn = tf.layers.BatchNormalization(axis=1, epsilon=1e-5, momentum=0.9, name=name + 'conv_tans_3x3_1_bn')
-        self.branch3_conv_tans2 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[1], kernel_size=(3, 3), strides=(2, 1), padding='same',
+        self.branch3_conv_tans2 = tf.layers.Conv2DTranspose(filters=conv_trans_5x5_filters[1], kernel_size=(3, 3), strides=(1, 1), padding='same',
                                                             use_bias=False, data_format="channels_first", name=name + 'conv_tans_3x3_2',
                                                             kernel_initializer=tf.random_normal_initializer(stddev=0.02))
         self.branch3_conv_tan2_bn = tf.layers.BatchNormalization(axis=1, epsilon=1e-5, momentum=0.9, name=name + 'conv_tans_3x3_2_bn')
