@@ -12,8 +12,8 @@ import time
 from glob import glob
 
 import numpy as np
-import scipy.misc
 import tensorflow as tf
+from PIL import Image
 
 
 def create_folder(path, continue_training=False):
@@ -30,7 +30,7 @@ def create_folder(path, continue_training=False):
         os.makedirs(path)
 
 
-def images2tfrecord(img_dir, save_dir, name, size=64):
+def images2tfrecord(img_dir, save_dir, name, crop=False, size=64):
     """
     convert images to a tfrecord file,from PIL import Image
     the images in the tfrecord file are resized, normalized to [-1,1) and channel first
@@ -45,9 +45,14 @@ def images2tfrecord(img_dir, save_dir, name, size=64):
     writer = tf.python_io.TFRecordWriter(os.path.join(save_dir, '%s_%d.tfrecord' % (name, size)), writer_options)
     start_time = time.time()
     for i in range(len(img_path_list)):
-        img = scipy.misc.imread(img_path_list[i], mode='RGB')
-        img = scipy.misc.imresize(img, [size, size])
-        img = (img.astype('float32') - 127.5) / 127.5
+        img = Image.open(img_path_list[i])
+        if crop:  # center crop to 128x128
+            h, w = img.size[:2]
+            j, k = (h - 128) / 2, (w - 128) / 2
+            box = (j, k, j + 128, k + 128)
+            img = img.crop(box=box)
+        img = img.resize([size, size])
+        img = (np.array(img, dtype='float32') - 127.5) / 127.5
         img = np.transpose(img, [2, 0, 1])
         feature = tf.train.Features(feature={'img_bytes': __bytes_feature(img.tobytes())})
         example = tf.train.Example(features=feature)

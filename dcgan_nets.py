@@ -9,6 +9,7 @@ discriminator and generator networks
 """
 
 import functools
+
 import tensorflow as tf
 
 from layers_with_spectral_norm import Conv2D
@@ -16,19 +17,15 @@ from layers_with_spectral_norm import Dense
 
 
 class Generator:
-    """
-    discriminator and generator using the networks of DCGAN
-    """
-
     def __init__(self, image_shape, first_conv_trans_layer_filters, conv_trans_layers, noise_dim):
         """
         create the generator with the input conv2d_transpose layer numbers and first layer filter numbers.
         the first layer is a fully connected layer with batch normalization
             that projects and reshapes the random noise followed by several conv2d_transpose layers
-        every conv2d_transpose layers has kernel_size=(3, 3) strides=[2, 2] and filters = first_conv_trans_layer_filters // (2 ** (layer - 1))
+        every conv2d_transpose layers has kernel_size=(5, 5) strides=[2, 2] and filters = first_conv_trans_layer_filters // (2 ** (layer - 1))
         the conv_1x1 with batch_norm layer is optional and it has half of the filters of it's corresponding conv2d_transpose
         all the kernel_initializer is tf.truncated_normal_initializer(stddev=0.02)
-        batch normalization and swish activation is applied to every layer except the output layer
+        batch normalization and ReLU activation is applied to every layer except the output layer
         the output layer(not included in the conv_trans_layers) is a conv2d_transpose layers with kernel_size=(5, 5), strides=[1, 1], tanh and no batch_norm
         :param image_shape: output image shape [channel, height, width]
         :param first_conv_trans_layer_filters: the numbers of filters in the first conv2d_transpose layer of the generator
@@ -43,18 +40,21 @@ class Generator:
                                        kernel_initializer=tf.truncated_normal_initializer(stddev=0.02), name="generator/project/project")
         self.project_batch_norm = tf.layers.BatchNormalization(epsilon=1e-5, momentum=0.9, name='generator/project/batch_norm')
         self.conv_trans_batch_norm_layers = []  # conv2d transpose layers with batch normalization
+        print("DCGAN Generator: ")
+        print('    project and reshape: ' + str(self.project_shape))
         for layer in range(1, conv_trans_layers):
             layer_name = 'generator/conv_trans_%d/' % layer
             filters = first_conv_trans_layer_filters // (2 ** (layer - 1))
+            print('    conv_trans_%d: filters=%d' % (layer, filters))
             conv_trans = tf.layers.Conv2DTranspose(filters=filters, kernel_size=(5, 5), strides=(2, 2), padding='same', use_bias=False,
                                                    kernel_initializer=tf.truncated_normal_initializer(stddev=0.02), data_format="channels_first",
                                                    name=layer_name + 'conv_trans')
             batch_norm = tf.layers.BatchNormalization(axis=1, epsilon=1e-5, momentum=0.9, name=layer_name + 'conv_trans_batch_norm')
             self.conv_trans_batch_norm_layers.append((conv_trans, batch_norm, layer_name))
         # output layer whose output shape is [batch_size, channel, height, width], no batch normalization
+        print('    conv_trans_%d: filters=%d, No BN' % (conv_trans_layers, self.channel))
         self.output_layer = tf.layers.Conv2DTranspose(filters=self.channel, kernel_size=(5, 5), strides=(2, 2), padding='same', data_format="channels_first",
-                                                      kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
-                                                      name='generator/output_layer/conv_trans')
+                                                      kernel_initializer=tf.truncated_normal_initializer(stddev=0.02), name='generator/output_layer/conv_trans')
 
     def __call__(self, batch_z, training, name):
         """generate images by random noise(batch_z)
@@ -78,7 +78,7 @@ class Generator:
         used for generating images, generate 100 images
         :return: the Tensor if generated images is 'generator/output_layer/tanh/during_inference:0'
         """
-        batch_z = tf.random_normal([225, self.noise_dim], name='noise_for_inference')
+        batch_z = tf.placeholder(dtype=tf.float32, shape=[None, self.noise_dim], name='noise_for_inference')
         self.__call__(batch_z, training=False, name='inference')
 
     @property
@@ -91,17 +91,17 @@ class Discriminator:
         """
         create the discriminator with the input conv2d layer numbers and first layer filter numbers.
         each layer has first_layer_filters*(2**(layer_index-1)) filters and no pooling are used.
-        every conv2d layers has a kernel_size=(5, 5)(the last conv2d layers is (3,3)), a strides=[2, 2] and a swish activation
+        every conv2d layers has a kernel_size=(5, 5), strides=[2, 2] and a leakeyReLU activation
         batch normalization is applied to every layer except the first conv and conv_1x1 layer (if this conv_1x1 exist)
         the last layer is a fully connected layer with linear activation and no batch normalization.
         all the kernel_initializer is tf.truncated_normal_initializer(stddev=0.02)
         :param first_layer_filters:  the numbers of filters in the first conv2d layer of the discriminator
         :param conv_layers: the numbers of conv2d layers of the discriminator
         :param spectral_norm: use Spectral Normalization
-        :param use_conv_1x1: use conv_1x1 layer after each conv layer
         """
         assert conv_layers >= 2, 'there must be more than 1 conv2d layers of the discriminator'
         self.conv_batch_norm_layers = []
+        print("DCGAN Discriminator: ")
         for layer in range(1, conv_layers + 1):
             layer_name = 'discriminator/conv_%d/' % layer
             filters = int((2 ** (layer - 1))) * first_layer_filters
@@ -109,8 +109,10 @@ class Discriminator:
                           use_bias=False, name=layer_name + 'conv_5x5', spectral_norm=spectral_norm, padding='same')
             if layer == 1:  # conv_1 has no batch normalization
                 batch_norm = None
+                print('    conv_%d: filters=%d, No BN' % (layer, filters))
             else:
                 batch_norm = tf.layers.BatchNormalization(axis=1, epsilon=1e-5, momentum=0.9, name=layer_name + 'conv_batch_norm')
+                print('    conv_%d: filters=%d' % (layer, filters))
             self.conv_batch_norm_layers.append((conv, batch_norm, layer_name))
         self.output_layer_flatten = tf.layers.Flatten(name='discriminator/output_layer/flatten', data_format='channels_first')
         self.output_layer_fc = Dense(units=1, kernel_initializer=tf.truncated_normal_initializer(stddev=0.02), use_bias=True,
