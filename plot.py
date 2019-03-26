@@ -29,5 +29,13 @@ def flush(path):
         plt.xlabel('Generator iterations')
         plt.ylabel(name)
         plt.savefig(os.path.join(path, name + '.jpg'))
+
+        # plt.figure()
+        # plt.plot(x_vals, y_vals)
+        # plt.xlabel('Generator iterations')
+        # plt.ylabel(name)
+        # plt.savefig(os.path.join(path, name + '.jpg'))
+        # plt.close('all')
+
         plt.close('all')
     _since_last_flush.clear()

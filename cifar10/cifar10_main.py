@@ -35,10 +35,10 @@ GEN_CONV_LAYERS = 3
 DISC_FIRST_LAYER_FILTERS = 64
 DISC_CONV_LAYERS = 3
 
-GENERATOR_TYPE = 'DCGAN'  # 'DCGAN' or 'Inception-trans Nets'
+GENERATOR_TYPE = 'Inception-trans Nets'  # 'DCGAN' or 'Inception-trans Nets'
 
 # hyper-parameters:
-BATCH_SIZE = 50
+BATCH_SIZE = 64
 EPOCHS = 850
 NOISE_DIM = 128
 TRAINING_ALGORITHM = "vanilla"  # 'vanilla' 'wgan', 'sn-wgan'
@@ -51,6 +51,10 @@ elif TRAINING_ALGORITHM == 'wgan' or TRAINING_ALGORITHM == 'sn-wgan':  # wgan an
     DISCRIMINATOR_TRAINING_LOOP = 5
     GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='generator_optimizer_RMSProp')
     DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='discriminator_optimizer_RMSProp')
+elif TRAINING_ALGORITHM == 'wgan-gp':  # wgan-gp training hyper-parameters
+    DISCRIMINATOR_TRAINING_LOOP = 5
+    GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9, name='generator_optimizer_adam')
+    DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9, name='discriminator_optimizer_adam')
 else:
     raise ValueError("Unknown training algorithm")
 
@@ -73,9 +77,9 @@ TRAINING_OR_INFERENCE = 'training'  # 'training' or 'inference'
 
 def get_cifar10_dataset(tfrecord_dir=os.path.join('./data', 'cifar10.tfrecord')):
     return tf.data.TFRecordDataset(tfrecord_dir, compression_type="ZLIB") \
-        .map(components.parse_example) \
-        .map(lambda img: tf.reshape(img, [3, 32, 32])) \
-        .shuffle(60000)
+        .map(__parse_example) \
+        .map(lambda img: tf.reshape(img, [32, 32, 3])) \
+        .shuffle(50000)
 
 
 def show_cifar10_pictures_from_tfrecord(images_per_row):
@@ -84,11 +88,11 @@ def show_cifar10_pictures_from_tfrecord(images_per_row):
     dataset = get_cifar10_dataset(dataset_path).batch(images_per_row ** 2)
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
-    [_, _, height, width] = dataset.output_shapes
+    [_, height, width, _] = dataset.output_shapes
     fig = np.zeros([height * images_per_row, width * images_per_row, 3]).astype('uint8')
     with tf.Session() as sess:
         images = sess.run(next_element)
-        images = np.around(np.transpose(images, [0, 2, 3, 1]) * 127.5 + 127.5).astype('uint8')
+        images = np.around(images).astype('uint8')
     for i in range(images_per_row):
         for j in range(images_per_row):
             fig[i * height:(i + 1) * height, j * width:(j + 1) * width, :] = images[i * images_per_row + j]
@@ -97,18 +101,19 @@ def show_cifar10_pictures_from_tfrecord(images_per_row):
 
 def cifar102tfrecord(save_dir):
     """
-    :param save_dir:
+    :param save_dir: tfrecord save_dir
     """
     assert not os.path.exists(os.path.join(save_dir, 'cifar10.tfrecord')), 'tfrecord file already exist'
     (train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.cifar10.load_data()
-    train_images = np.vstack((train_images, test_images)).astype('float32')  # use test set to training
-    train_images = ((train_images - 127.5) / 127.5)  # normalize the images to the range of [-1, 1], the original range is {0, 1, ... , 255}
-    train_images = np.transpose(train_images, [0, 3, 1, 2])  # channel last to channel first
+    train_images = ((train_images - 127.5) / 127.5).astype('float32')  # normalize the images to the range of [-1, 1],
     writer_options = tf.python_io.TFRecordOptions(tf.python_io.TFRecordCompressionType.ZLIB)
     writer = tf.python_io.TFRecordWriter(os.path.join(save_dir, 'cifar10.tfrecord'), writer_options)
     start_time = time.time()
     for i in range(len(train_images)):
-        feature = tf.train.Features(feature={'img_bytes': __bytes_feature(train_images[i].tobytes())})
+        feature = tf.train.Features(feature={
+            'img_bytes': __bytes_feature(train_images[i].tobytes()),
+            # 'label': _int64_feature(train_labels[i])
+        })
         example = tf.train.Example(features=feature)
         writer.write(example.SerializeToString())
         if (i + 1) % 1000 == 0:
@@ -117,8 +122,18 @@ def cifar102tfrecord(save_dir):
     writer.close()
 
 
+def __parse_example(serial_example):
+    feats = tf.parse_single_example(serial_example, features={'img_bytes': tf.FixedLenFeature([], tf.string)})
+    image = tf.decode_raw(feats['img_bytes'], tf.float32)
+    return image
+
+
 def __bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+
+
+def _int64_feature(value):
+    return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
 
 if __name__ == '__main__':
@@ -138,7 +153,9 @@ if __name__ == '__main__':
         else:
             raise ValueError("Unknown Generator type")
         spectral_norm = True if TRAINING_ALGORITHM == 'sn-wgan' else False
-        discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS, spectral_norm=spectral_norm)
+        batch_norm = False if TRAINING_ALGORITHM == 'wgan-gp' else True
+        discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
+                                                 spectral_norm=spectral_norm, batch_norm=batch_norm)
         gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH, noise_dim=NOISE_DIM)
         gan.train(dataset=cifar10_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
                   discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,

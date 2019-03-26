@@ -54,7 +54,7 @@ class Dense:
 class Conv2D:
     def __init__(self, filters, kernel_size, kernel_initializer,
                  strides=(1, 1), padding='same', use_bias=False, bias_initializer=None, activation=None,
-                 spectral_norm=False, data_format="channels_first", name=None):
+                 spectral_norm=False, data_format="channels_last", name=None):
         """
         conv2d with Spectral Normalization layer
         :param filters:

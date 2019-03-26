@@ -35,10 +35,10 @@ DISC_CONV_LAYERS = 3
 GENERATOR_TYPE = 'DCGAN'  # 'DCGAN' or 'Inception-trans Nets'
 
 # hyper-parameters:
-BATCH_SIZE = 50
+BATCH_SIZE = 64
 EPOCHS = 800
 NOISE_DIM = 128
-TRAINING_ALGORITHM = "vanilla"  # 'vanilla' 'wgan', 'sn-wgan'
+TRAINING_ALGORITHM = "wgan-gp"  # 'vanilla' 'wgan', 'sn-wgan', 'wgan-gp', 'acgan'
 
 if TRAINING_ALGORITHM == 'vanilla':  # vanilla gan training hyper-parameters
     DISCRIMINATOR_TRAINING_LOOP = 1
@@ -48,6 +48,10 @@ elif TRAINING_ALGORITHM == 'wgan' or TRAINING_ALGORITHM == 'sn-wgan':  # wgan an
     DISCRIMINATOR_TRAINING_LOOP = 5
     GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='generator_optimizer_RMSProp')
     DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='discriminator_optimizer_RMSProp')
+elif TRAINING_ALGORITHM == 'wgan-gp':  # wgan-gp training hyper-parameters
+    DISCRIMINATOR_TRAINING_LOOP = 5
+    GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9, name='generator_optimizer_adam')
+    DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9, name='discriminator_optimizer_adam')
 else:
     raise ValueError("Unknown training algorithm")
 
@@ -63,7 +67,7 @@ IMAGE_PAGES = 5
 IMAGES_PER_ROW_FOR_GENERATING = 10
 
 # training or inference
-TRAINING_OR_INFERENCE = 'inference'  # 'training' or 'inference'
+TRAINING_OR_INFERENCE = 'training'  # 'training' or 'inference'
 
 
 # ==============================================================================
@@ -71,7 +75,7 @@ TRAINING_OR_INFERENCE = 'inference'  # 'training' or 'inference'
 def get_mnist_dataset(use_testset=False):
     """
     there are 60000 and 10000 labeled samples in the training set and test set respectively
-    data_format="channels_first"
+    data_format="channels_last"
     :param use_testset: use test set as part of training set to train gan
     :return: tf.data.Dataset
     """
@@ -90,11 +94,11 @@ def show_mnist_pictures(images_per_row):
     """
     (train_images, train_labels), (test_images, test_labels) = __get_mnist_data()
     train_images = np.vstack((train_images, test_images))
-    [_, _, height, width] = train_images.shape
+    [_, height, width, _] = train_images.shape
     fig = np.zeros([height * images_per_row, width * images_per_row]).astype('uint8')
     for i in range(images_per_row):
         for j in range(images_per_row):
-            fig[i * height:(i + 1) * height, j * width:(j + 1) * width] = train_images[random.randint(0, train_images.shape[0])][0]
+            fig[i * height:(i + 1) * height, j * width:(j + 1) * width] = train_images[random.randint(0, train_images.shape[0])][:, :, 0]
     img = Image.fromarray(fig)
     img.show()
     img.save('./mnist.jpg')
@@ -102,18 +106,18 @@ def show_mnist_pictures(images_per_row):
 
 def __get_mnist_data():
     """
-    get mnist data and set the download path, data_format="channels_first"
+    get mnist data and set the download path, data_format="channels_last"
     :return: (train_images, train_labels), (test_images, test_labels)
     """
     (train_images, train_labels), (test_images, test_labels) = tf.keras.datasets.mnist.load_data(
         os.getcwd() + os.path.sep + "mnistdata" + os.path.sep + "mnist.npz")
-    train_images = train_images.reshape(train_images.shape[0], 1, 28, 28)
-    test_images = test_images.reshape(test_images.shape[0], 1, 28, 28)
+    train_images = train_images.reshape(train_images.shape[0], 28, 28, 1)
+    test_images = test_images.reshape(test_images.shape[0], 28, 28, 1)
     return (train_images, train_labels), (test_images, test_labels)
 
 
 if __name__ == '__main__':
-    # show_mnist_pictures(4)
+    # show_mnist_pictures(10)
     # training or inference
     if TRAINING_OR_INFERENCE == 'training':
         # construct the networks and training algorithm
@@ -127,7 +131,9 @@ if __name__ == '__main__':
         else:
             raise ValueError("Unknown Generator type")
         spectral_norm = True if TRAINING_ALGORITHM == 'sn-wgan' else False
-        discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS, spectral_norm=spectral_norm)
+        batch_norm = False if TRAINING_ALGORITHM == 'wgan-gp' else True
+        discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
+                                                 spectral_norm=spectral_norm, batch_norm=batch_norm)
         gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH, noise_dim=NOISE_DIM)
         gan.train(dataset=mnist_dataset, batch_size=BATCH_SIZE, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP, epochs=EPOCHS,
                   discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,

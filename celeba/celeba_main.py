@@ -47,6 +47,10 @@ elif TRAINING_ALGORITHM == 'wgan' or TRAINING_ALGORITHM == 'sn-wgan':  # wgan an
     DISCRIMINATOR_TRAINING_LOOP = 5
     GENERATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='generator_optimizer_RMSProp')
     DISCRIMINATOR_OPTIMIZER = tf.train.RMSPropOptimizer(learning_rate=5e-5, name='discriminator_optimizer_RMSProp')
+elif TRAINING_ALGORITHM == 'wgan-gp':  # wgan-gp training hyper-parameters
+    DISCRIMINATOR_TRAINING_LOOP = 5
+    GENERATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9, name='generator_optimizer_adam')
+    DISCRIMINATOR_OPTIMIZER = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9, name='discriminator_optimizer_adam')
 else:
     raise ValueError("Unknown training algorithm")
 
@@ -115,7 +119,9 @@ if __name__ == '__main__':
         else:
             raise ValueError("Unknown Generator type")
         spectral_norm = True if TRAINING_ALGORITHM == 'sn-wgan' else False
-        discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS, spectral_norm=spectral_norm)
+        batch_norm = False if TRAINING_ALGORITHM == 'wgan-gp' else True
+        discriminator = dcgan_nets.Discriminator(first_layer_filters=DISC_FIRST_LAYER_FILTERS, conv_layers=DISC_CONV_LAYERS,
+                                                 spectral_norm=spectral_norm, batch_norm=batch_norm)
         gan = Gan(generator=generator, discriminator=discriminator, save_path=SAVE_PATH, noise_dim=NOISE_DIM)
         gan.train(dataset=celeba_dataset, batch_size=BATCH_SIZE, epochs=EPOCHS, discriminator_training_loop=DISCRIMINATOR_TRAINING_LOOP,
                   discriminator_optimizer=DISCRIMINATOR_OPTIMIZER, generator_optimizer=GENERATOR_OPTIMIZER, algorithm=TRAINING_ALGORITHM,

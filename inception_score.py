@@ -11,13 +11,14 @@ Returns:
     Mean and standard deviation of the Inception Score across the splits.
 '''
 
-import tensorflow as tf
-import os, sys
 import functools
-import numpy as np
 import time
+
+import numpy as np
+import tensorflow as tf
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
+
 tfgan = tf.contrib.gan
 
 session = tf.InteractiveSession()

@@ -53,7 +53,6 @@ def images2tfrecord(img_dir, save_dir, name, crop=False, size=64):
             img = img.crop(box=box)
         img = img.resize([size, size])
         img = (np.array(img, dtype='float32') - 127.5) / 127.5
-        img = np.transpose(img, [2, 0, 1])
         feature = tf.train.Features(feature={'img_bytes': __bytes_feature(img.tobytes())})
         example = tf.train.Example(features=feature)
         writer.write(example.SerializeToString())
